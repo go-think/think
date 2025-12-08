@@ -5,13 +5,12 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/forgoer/thinkgo/context"
-	"github.com/forgoer/thinkgo/router"
-	"github.com/forgoer/thinkgo/think"
+	"github.com/go-think/think/context"
+	"github.com/go-think/think/router"
 )
 
 type Pipeline struct {
-	handlers []think.Handler
+	handlers []Handler
 	pipeline *list.List
 	passable *context.Request
 }
@@ -25,13 +24,13 @@ func NewPipeline() *Pipeline {
 }
 
 // Pipe Push a Middleware Handler to the pipeline
-func (p *Pipeline) Pipe(m think.Handler) *Pipeline {
+func (p *Pipeline) Pipe(m Handler) *Pipeline {
 	p.pipeline.PushBack(m)
 	return p
 }
 
 // Pipe Batch push Middleware Handlers to the pipeline
-func (p *Pipeline) Through(hls []think.Handler) *Pipeline {
+func (p *Pipeline) Through(hls []Handler) *Pipeline {
 	for _, hl := range hls {
 		p.Pipe(hl)
 	}
@@ -67,13 +66,13 @@ func (p *Pipeline) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		result.(router.Response).Send(w)
 		break
 	case template.HTML:
-		think.Html(string(result.(template.HTML))).Send(w)
+		Html(string(result.(template.HTML))).Send(w)
 		break
 	case http.Handler:
 		result.(http.Handler).ServeHTTP(w, r)
 		break
 	default:
-		think.Response(result).Send(w)
+		Response(result).Send(w)
 		break
 	}
 }
@@ -82,12 +81,12 @@ func (p *Pipeline) handler(passable *context.Request, e *list.Element) interface
 	if e == nil {
 		return nil
 	}
-	hl := e.Value.(think.Handler)
+	hl := e.Value.(Handler)
 	result := hl.Process(passable, p.closure(e))
 	return result
 }
 
-func (p *Pipeline) closure(e *list.Element) think.Closure {
+func (p *Pipeline) closure(e *list.Element) Closure {
 	return func(req *context.Request) interface{} {
 		e = e.Next()
 		return p.handler(req, e)

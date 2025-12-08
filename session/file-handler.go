@@ -4,7 +4,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/forgoer/thinkgo/filesystem"
+	"github.com/go-think/think/filesystem"
 )
 
 type FileHandler struct {

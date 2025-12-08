@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think/context"
 )
 
 // RunRoute Return the response for the given rule.

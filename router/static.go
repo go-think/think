@@ -3,7 +3,7 @@ package router
 import (
 	"net/http"
 
-	"github.com/forgoer/thinkgo/filesystem"
+	"github.com/go-think/think/filesystem"
 )
 
 type staticHandle struct {

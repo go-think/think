@@ -6,34 +6,34 @@
 	<strong>ThinkGo is a lightweight MVC framework written in Go (Golang).</strong>
 </p>
 <p align="center">
-	<a href="https://www.travis-ci.org/forgoer/thinkgo">
+	<a href="https://www.travis-ci.org/go-think/think">
 		<img src="https://www.travis-ci.org/forgoer/thinkgo.svg?branch=master" alt="Build Status">
   	</a>
-  	<a href="https://coveralls.io/github/forgoer/thinkgo">
-        <img src="https://coveralls.io/repos/github/forgoer/thinkgo/badge.svg" alt="Coverage Status">
+  	<a href="https://coveralls.io/github/go-think/think">
+        <img src="https://coveralls.io/repos/github/go-think/think/badge.svg" alt="Coverage Status">
     </a>
 </p>
 <p align="center">
-	<a href="https://goreportcard.com/report/github.com/forgoer/thinkgo">
-		<img src="https://goreportcard.com/badge/github.com/forgoer/thinkgo" alt="Go Report Card">
+	<a href="https://goreportcard.com/report/github.com/go-think/think">
+		<img src="https://goreportcard.com/badge/github.com/go-think/think" alt="Go Report Card">
   	</a>
-	<a href="https://codeclimate.com/github/forgoer/thinkgo/maintainability">
+	<a href="https://codeclimate.com/github/go-think/think/maintainability">
 		<img src="https://api.codeclimate.com/v1/badges/c315fda3b07b5aef3529/maintainability" />
 	</a>
-	<a href="https://godoc.org/github.com/forgoer/thinkgo">
-		<img src="https://godoc.org/github.com/forgoer/thinkgo?status.svg" alt="GoDoc">
+	<a href="https://godoc.org/github.com/go-think/think">
+		<img src="https://godoc.org/github.com/go-think/think?status.svg" alt="GoDoc">
   	</a>
-	<a href="https://www.codetriage.com/forgoer/thinkgo">
-		<img src="https://www.codetriage.com/forgoer/thinkgo/badges/users.svg" alt="Open Source Helpers">
+	<a href="https://www.codetriage.com/go-think/think">
+		<img src="https://www.codetriage.com/go-think/think/badges/users.svg" alt="Open Source Helpers">
   	</a>
 	<a href="https://gitter.im/think-go/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge">
 		<img src="https://badges.gitter.im/think-go/community.svg" alt="Join the chat">
   	</a>
-	<a href="https://github.com/forgoer/thinkgo/releases">
-		<img src="https://img.shields.io/github/release/forgoer/thinkgo.svg" alt="Latest Stable Version">
+	<a href="https://github.com/go-think/think/releases">
+		<img src="https://img.shields.io/github/release/go-think/think.svg" alt="Latest Stable Version">
 	</a>
 	<a href="LICENSE">
-		<img src="https://img.shields.io/github/license/forgoer/thinkgo.svg" alt="License">
+		<img src="https://img.shields.io/github/license/go-think/think.svg" alt="License">
 	</a>
 </p>
 
@@ -43,7 +43,7 @@
 The only requirement is the [Go Programming Language](https://golang.org/dl/)
 
 ```
-go get -u github.com/forgoer/thinkgo
+go get -u github.com/go-think/think
 ```
 
 ## Quick start
@@ -54,8 +54,8 @@ package main
 import (
     "fmt"
 
-	"github.com/forgoer/thinkgo"	
-	"github.com/forgoer/thinkgo/think"
+	"github.com/go-think/think"	
+	"github.com/go-think/think/think"
 )
 
 func main() {
@@ -248,8 +248,8 @@ Below is an example of a basic controller class.
 package controller
 
 import (
-	"github.com/forgoer/thinkgo"
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think"
+	"github.com/go-think/think/context"
 )
 
 func Index(req *context.Request) *context.Response {
@@ -426,7 +426,7 @@ type Handler interface {
 Once your driver has been implemented, you are ready to register it:
 
 ```go
-import "github.com/forgoer/thinkgo/session"
+import "github.com/go-think/think/session"
 
 session.Extend("my_session", MySessionHandler)
 ```
@@ -438,7 +438,7 @@ The logger provides the eight logging levels defined in [RFC 5424]( https://tool
 #### Basic Usage
 
 ```go
-import "github.com/forgoer/thinkgo/log"
+import "github.com/go-think/log"
 
 log.Debug("log with Debug")
 log.Info("log with Info")
@@ -458,12 +458,12 @@ For example, if you wish to use `daily` log files, you can do this:
 
 ```go
 import (
-	"github.com/forgoer/thinkgo/log"
-	"github.com/forgoer/thinkgo/log/handler"
-	"github.com/forgoer/thinkgo/log/record"
+	"github.com/go-think/log"
+	"github.com/go-think/log/handler"
+	"github.com/go-think/log/record"
 )
 
-fh := handler.NewFileHandler("path/to/thinkgo.log", record.INFO)
+fh := handler.NewFileHandler("path/to/think.log", record.INFO)
 
 log.GetLogger().PushHandler(fh)
 ```
@@ -476,7 +476,7 @@ ThinkGo Cache Currently supports redis, memory, and can customize the store adap
 
 ```go
 import (
-	"github.com/forgoer/thinkgo/cache"
+	"github.com/go-think/cache"
 	"time"
 )
 
@@ -484,10 +484,10 @@ import (
 var foo string 
 
 // Create a cache with memory store
-c, _ := cache.Cache(cache.NewMemoryStore("thinkgo"))
+c, _ := cache.Cache(cache.NewMemoryStore("think go"))
 
 // Set the value
-c.Put("foo", "thinkgo", 10 * time.Minute)
+c.Put("foo", "think go", 10 * time.Minute)
 
 // Get the string associated with the key "foo" from the cache
 c.Get("foo", &foo)
@@ -506,11 +506,11 @@ cache.Remember("foo", &a, 1*time.Minute, func() interface{} {
 })
 ```
 
-refer to [ThinkGo Cache]( https://github.com/forgoer/thinkgo/tree/master/cache )
+refer to [ThinkGo Cache]( https://github.com/go-think/think/tree/master/cache )
 
 ## ORM
 
-refer to [ThinkORM]( https://github.com/forgoer/thinkorm )
+refer to [ThinkORM]( https://github.com/go-think/think )
 
 ## License
 
@@ -519,5 +519,5 @@ This project is licensed under the [Apache 2.0 license](LICENSE).
 ## Contact
 
 If you have any issues or feature requests, please contact us. PR is welcomed.
-- https://github.com/forgoer/thinkgo/issues
-- techqiang@gmail.com
+- https://github.com/go-think/think/issues
+- leeqvip@gmail.com
