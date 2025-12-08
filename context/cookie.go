@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/forgoer/thinkgo/config"
+	"github.com/go-think/think/config"
 )
 
 type CookieConfig struct {

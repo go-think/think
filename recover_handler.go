@@ -1,11 +1,12 @@
-package think
+package thinkgo
 
 import (
 	"fmt"
-	"github.com/forgoer/thinkgo/context"
 	"net/http/httputil"
 	"runtime"
 	"strings"
+
+	"github.com/go-think/think/context"
 )
 
 type RecoverHandler struct {

@@ -2,16 +2,16 @@ package thinkgo
 
 import (
 	"fmt"
-	"github.com/forgoer/thinkgo/log"
-	"github.com/forgoer/thinkgo/log/record"
 	"net/http"
+
+	"github.com/go-think/log"
+	"github.com/go-think/log/record"
 
 	"time"
 
-	"github.com/forgoer/thinkgo/config"
-	"github.com/forgoer/thinkgo/helper"
-	"github.com/forgoer/thinkgo/router"
-	"github.com/forgoer/thinkgo/think"
+	"github.com/go-think/think/config"
+	"github.com/go-think/think/helper"
+	"github.com/go-think/think/router"
 )
 
 type registerRouteFunc func(route *router.Route)
@@ -19,13 +19,13 @@ type registerRouteFunc func(route *router.Route)
 type registerConfigFunc func()
 
 type Think struct {
-	App      *think.Application
-	handlers []think.HandlerFunc
+	App      *Application
+	handlers []HandlerFunc
 }
 
 // New Create The Application
 func New() *Think {
-	application := think.NewApplication()
+	application := NewApplication()
 	application.Logger = log.NewLogger("develop", record.DEBUG)
 	t := &Think{
 		App: application,
@@ -48,7 +48,7 @@ func (th *Think) RegisterConfig(register registerConfigFunc) {
 }
 
 // RegisterConfig Register Config
-func (th *Think) RegisterHandler(handler think.HandlerFunc) {
+func (th *Think) RegisterHandler(handler HandlerFunc) {
 	th.handlers = append(th.handlers, handler)
 }
 
@@ -64,14 +64,14 @@ func (th *Think) Run(params ...string) {
 	var addrs = helper.ParseAddr(params...)
 
 	// register route handler
-	th.RegisterHandler(think.NewRouteHandler)
+	th.RegisterHandler(NewRouteHandler)
 
 	pipeline := NewPipeline()
 	for _, h := range th.handlers {
 		pipeline.Pipe(h(th.App))
 	}
 
-	th.App.Logger.Debug("\r\nLoaded routes:\r\n%s",string(th.App.GetRoute().Dump()))
+	th.App.Logger.Debug("\r\nLoaded routes:\r\n%s", string(th.App.GetRoute().Dump()))
 
 	go func() {
 		th.App.Logger.Debug("ThinkGo server running on http://%s", addrs)

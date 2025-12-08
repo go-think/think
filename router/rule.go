@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think/context"
 )
 
 // Rule Route rule

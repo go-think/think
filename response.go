@@ -1,4 +1,4 @@
-package think
+package thinkgo
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think/context"
 )
 
 // Json Create a new HTTP Response with JSON data

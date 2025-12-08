@@ -1,9 +1,9 @@
-package think
+package thinkgo
 
 import (
-	"github.com/forgoer/thinkgo/config"
-	"github.com/forgoer/thinkgo/context"
-	"github.com/forgoer/thinkgo/session"
+	"github.com/go-think/think/config"
+	"github.com/go-think/think/context"
+	"github.com/go-think/think/session"
 )
 
 type SessionHandler struct {

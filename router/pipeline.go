@@ -3,7 +3,7 @@ package router
 import (
 	"container/list"
 
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think/context"
 )
 
 type Pipeline struct {

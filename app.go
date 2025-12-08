@@ -1,16 +1,16 @@
-package think
+package thinkgo
 
 import (
-	"github.com/forgoer/thinkgo/log"
-	"github.com/forgoer/thinkgo/router"
-	"github.com/forgoer/thinkgo/view"
+	"github.com/go-think/think/contract"
+	"github.com/go-think/think/router"
+	"github.com/go-think/think/view"
 )
 
 // Application the ThinkGo Application
 type Application struct {
 	Env    string
 	Debug  bool
-	Logger *log.Logger
+	Logger contract.Logger
 	view   *view.View
 	route  *router.Route
 }

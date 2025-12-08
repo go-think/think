@@ -1,7 +1,7 @@
-package think
+package thinkgo
 
 import (
-	"github.com/forgoer/thinkgo/context"
+	"github.com/go-think/think/context"
 )
 
 // HandlerFunc Handle the application.
