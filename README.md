@@ -1,13 +1,13 @@
 <h1 align="center">
-  ThinkGo
+  Think
 </h1>
 
 <p align="center">
-	<strong>ThinkGo is a lightweight MVC framework written in Go (Golang).</strong>
+	<strong>Think is a lightweight MVC framework written in Go (Golang).</strong>
 </p>
 <p align="center">
-	<a href="https://www.travis-ci.org/go-think/think">
-		<img src="https://www.travis-ci.org/forgoer/thinkgo.svg?branch=master" alt="Build Status">
+	<a href="https://github.com/go-think/think/actions/workflows/build.yml">
+		<img src="https://github.com/go-think/think/actions/workflows/build.yml/badge.svg" alt="Build Status">
   	</a>
   	<a href="https://coveralls.io/github/go-think/think">
         <img src="https://coveralls.io/repos/github/go-think/think/badge.svg" alt="Coverage Status">
@@ -22,12 +22,6 @@
 	</a>
 	<a href="https://godoc.org/github.com/go-think/think">
 		<img src="https://godoc.org/github.com/go-think/think?status.svg" alt="GoDoc">
-  	</a>
-	<a href="https://www.codetriage.com/go-think/think">
-		<img src="https://www.codetriage.com/go-think/think/badges/users.svg" alt="Open Source Helpers">
-  	</a>
-	<a href="https://gitter.im/think-go/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge">
-		<img src="https://badges.gitter.im/think-go/community.svg" alt="Join the chat">
   	</a>
 	<a href="https://github.com/go-think/think/releases">
 		<img src="https://img.shields.io/github/release/go-think/think.svg" alt="Latest Stable Version">
