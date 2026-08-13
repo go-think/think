@@ -1,4 +1,4 @@
-package thinkgo
+package middleware
 
 import (
 	"github.com/go-think/think/config"
@@ -8,11 +8,10 @@ import (
 
 type SessionHandler struct {
 	Manager *session.Manager
-	app     *Application
 }
 
-// SessionHandler The default SessionHandler
-func NewSessionHandler(app *Application) Handler {
+// NewSessionHandler The default SessionHandler
+func NewSessionHandler() Handler {
 	handler := &SessionHandler{}
 	handler.Manager = session.NewManager(&session.Config{
 		Driver:     config.Session.Driver,
@@ -21,8 +20,6 @@ func NewSessionHandler(app *Application) Handler {
 		Encrypt:    config.Session.Encrypt,
 		Files:      config.Session.Files,
 	})
-
-	handler.app = app
 
 	return handler
 }
@@ -35,7 +32,7 @@ func (h *SessionHandler) Process(req *context.Request, next Closure) interface{}
 	result := next(req)
 
 	if res, ok := result.(session.Response); ok {
-		h.saveSession(res)
+		h.saveSession(res, store)
 	}
 
 	return result
@@ -45,6 +42,6 @@ func (h *SessionHandler) startSession(req *context.Request) *session.Store {
 	return h.Manager.SessionStart(req)
 }
 
-func (h *SessionHandler) saveSession(res session.Response) {
-	h.Manager.SessionSave(res)
+func (h *SessionHandler) saveSession(res session.Response, store *session.Store) {
+	h.Manager.SessionSave(res, store)
 }

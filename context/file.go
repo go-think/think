@@ -1,10 +1,11 @@
 package context
 
 import (
+	"errors"
 	"io"
 	"mime/multipart"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 type File struct {
@@ -12,19 +13,26 @@ type File struct {
 }
 
 func (f *File) Move(directory string, name ...string) (bool, error) {
+	if f.FileHeader == nil {
+		return false, errors.New("nil file header")
+	}
+
 	src, err := f.FileHeader.Open()
 	if err != nil {
 		return false, err
 	}
 	defer src.Close()
 
-	fname := f.FileHeader.Filename
-
-	if len(name) > 0 {
-		fname = name[0]
+	fname := filepath.Base(f.FileHeader.Filename)
+	if len(name) > 0 && name[0] != "" {
+		fname = filepath.Base(name[0])
 	}
 
-	dst := path.Join(directory, fname)
+	if err := os.MkdirAll(directory, 0755); err != nil {
+		return false, err
+	}
+
+	dst := filepath.Join(directory, fname)
 
 	out, err := os.Create(dst)
 	if err != nil {
@@ -32,7 +40,9 @@ func (f *File) Move(directory string, name ...string) (bool, error) {
 	}
 	defer out.Close()
 
-	io.Copy(out, src)
+	if _, err = io.Copy(out, src); err != nil {
+		return false, err
+	}
 
 	return true, nil
 }

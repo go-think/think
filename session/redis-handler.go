@@ -1,9 +1,9 @@
 package session
 
 import (
-	"encoding/json"
-	"github.com/gomodule/redigo/redis"
 	"time"
+
+	"github.com/gomodule/redigo/redis"
 )
 
 type RedisHandler struct {
@@ -21,21 +21,18 @@ func (rh *RedisHandler) Read(id string) string {
 	c := rh.pool.Get()
 	defer c.Close()
 
-	b, err := redis.Bytes(c.Do("GET", rh.prefix+":"+id))
+	val, err := redis.String(c.Do("GET", rh.prefix+":"+id))
 	if err != nil {
 		return ""
 	}
 
-	var value string
-
-	json.Unmarshal(b, value)
-
-	return value
+	return val
 }
 
 func (rh *RedisHandler) Write(id string, data string) {
 	c := rh.pool.Get()
 	defer c.Close()
 
-	c.Do("SETEX", rh.prefix+":"+id, int64(rh.lifetime), data)
+	_, _ = c.Do("SETEX", rh.prefix+":"+id, int64(rh.lifetime.Seconds()), data)
 }
+

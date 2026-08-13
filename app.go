@@ -1,4 +1,4 @@
-package thinkgo
+package think
 
 import (
 	"github.com/go-think/think/contract"

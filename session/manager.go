@@ -1,30 +1,33 @@
 package session
 
 import (
+	"sync"
 	"time"
 )
 
-var customHandlers map[string]Handler
+var (
+	customHandlers map[string]Handler
+	customHandlersMu sync.RWMutex
+)
 
 type Config struct {
-	//Default Session Driver
+	// Default Session Driver
 	Driver string
 
 	CookieName string
 
-	//Session Lifetime
+	// Session Lifetime
 	Lifetime time.Duration
 
-	//Session Encryption
+	// Session Encryption
 	Encrypt bool
 
-	//Session File Location
+	// Session File Location
 	Files string
 }
 
 type Manager struct {
-	store          *Store
-	Config         *Config
+	Config *Config
 }
 
 func NewManager(config *Config) *Manager {
@@ -36,51 +39,37 @@ func NewManager(config *Config) *Manager {
 }
 
 func (m *Manager) SessionStart(req Request) *Store {
-	m.parseStore()
+	storeHandler := m.parseStoreHandler()
+	store := NewStore(m.Config.CookieName, storeHandler)
 
-	if handler, ok := m.usingCookieSessions(); ok {
+	if handler, ok := storeHandler.(*CookieHandler); ok {
 		handler.SetRequest(req)
 	}
-	name, _ := req.Cookie(m.store.GetName())
-	m.store.SetId(name)
-	m.store.Start()
-	return m.store
+
+	cookieId, _ := req.Cookie(store.GetName())
+	store.SetId(cookieId)
+	store.Start()
+	return store
 }
 
-func (m *Manager) SessionSave(res Response) *Store {
-	if handler, ok := m.usingCookieSessions(); ok {
+func (m *Manager) SessionSave(res Response, store *Store) {
+	if store == nil {
+		return
+	}
+	if handler, ok := store.GetHandler().(*CookieHandler); ok {
 		handler.SetResponse(res)
 	}
-	res.Cookie(m.store.GetName(), m.store.GetId())
-	m.store.Save()
-	return m.store
+	_ = res.Cookie(store.GetName(), store.GetId())
+	store.Save()
 }
 
 func Extend(driver string, handler Handler) {
+	customHandlersMu.Lock()
+	defer customHandlersMu.Unlock()
 	if customHandlers == nil {
 		customHandlers = make(map[string]Handler)
 	}
 	customHandlers[driver] = handler
-}
-
-func (m *Manager) buildSession(handler Handler) *Store {
-	store := NewStore(m.Config.CookieName, handler)
-	return store
-}
-
-func (m *Manager) usingCookieSessions() (handler *CookieHandler, ok bool) {
-	handler, ok = m.store.GetHandler().(*CookieHandler)
-	return
-}
-
-func (m *Manager) parseStore() {
-	if m.store != nil {
-		return
-	}
-
-	m.store = m.buildSession(
-		m.parseStoreHandler(),
-	)
 }
 
 func (m *Manager) parseStoreHandler() Handler {
@@ -94,12 +83,20 @@ func (m *Manager) parseStoreHandler() Handler {
 			Lifetime: m.Config.Lifetime,
 		}
 	default:
-		var ok bool
-		storeHandler, ok = customHandlers[m.Config.Driver]
+		customHandlersMu.RLock()
+		handler, ok := customHandlers[m.Config.Driver]
+		customHandlersMu.RUnlock()
 		if !ok {
-			panic("Unsupported session driver: " + m.Config.Driver)
+			// 降级为默认 file driver，防止直接 panic
+			storeHandler = &FileHandler{
+				Path:     m.Config.Files,
+				Lifetime: m.Config.Lifetime,
+			}
+		} else {
+			storeHandler = handler
 		}
 	}
 
 	return storeHandler
 }
+

@@ -1,4 +1,4 @@
-package thinkgo
+package middleware
 
 import (
 	"fmt"
@@ -10,13 +10,13 @@ import (
 )
 
 type RecoverHandler struct {
-	app *Application
+	debug bool
 }
 
 // NewRecoverHandler The default NewRecoverHandler
-func NewRecoverHandler(app *Application) Handler {
+func NewRecoverHandler(debug bool) Handler {
 	return &RecoverHandler{
-		app: app,
+		debug: debug,
 	}
 }
 
@@ -39,7 +39,7 @@ func (h *RecoverHandler) Process(req *context.Request, next Closure) (result int
 			headers := strings.Split(string(httpRequest), "\r\n")
 			for idx, header := range headers {
 				current := strings.Split(header, ":")
-				if current[0] == "Authorization" {
+				if len(current) > 0 && current[0] == "Authorization" {
 					headers[idx] = current[0] + ": *"
 				}
 			}
@@ -49,7 +49,7 @@ func (h *RecoverHandler) Process(req *context.Request, next Closure) (result int
 			logMessage += fmt.Sprintf("\n%s", stacktrace)
 
 			response := context.ErrorResponse()
-			if h.app.Debug {
+			if h.debug {
 				response.SetContent(logMessage)
 			}
 			result = response

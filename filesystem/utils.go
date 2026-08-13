@@ -1,18 +1,14 @@
 package filesystem
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
-	"path"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
-var lock sync.RWMutex
-
 func Exists(p ...string) (bool, error) {
-	_, err := os.Stat(path.Join(p...))
+	_, err := os.Stat(filepath.Join(p...))
 	if err == nil {
 		return true, nil
 	}
@@ -23,43 +19,30 @@ func Exists(p ...string) (bool, error) {
 }
 
 func Get(path string) ([]byte, error) {
-	lock.Lock()
-	defer lock.Unlock()
-
-	var b []byte
-
-	f, err := os.OpenFile(path, os.O_RDWR, 0600)
+	f, err := os.OpenFile(path, os.O_RDONLY, 0600)
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
 
-	if err != nil {
-		return b, err
-	}
-
-	b, err = ioutil.ReadAll(f)
-	if err != nil {
-		return b, err
-	}
-	return b, nil
+	return io.ReadAll(f)
 }
 
 func Put(path string, data string) error {
-	lock.Lock()
-	defer lock.Unlock()
-
 	dir := filepath.Dir(path)
 	if ok, _ := Exists(dir); !ok {
-		err := os.MkdirAll(dir, 0600)
+		err := os.MkdirAll(dir, 0755)
 		if err != nil {
 			return err
 		}
 	}
 
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
-	defer f.Close()
-
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
+
 	_, err = f.WriteString(data)
 	return err
 }

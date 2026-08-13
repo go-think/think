@@ -10,21 +10,17 @@ import (
 )
 
 type CookieConfig struct {
-	Prefix string
+	Prefix          string
+	Path            string        // optional
+	Domain          string        // optional
+	ExpiresDuration time.Duration // 过期时长配置
+	RawExpires      string        // for reading cookies only
 
-	Path       string    // optional
-	Domain     string    // optional
-	Expires    time.Time // optional
-	RawExpires string    // for reading cookies only
-
-	// MaxAge=0 means no 'Max-Age' attribute specified.
-	// MaxAge<0 means delete cookie now, equivalently 'Max-Age: 0'
-	// MaxAge>0 means Max-Age attribute present and given in seconds
 	MaxAge   int
 	Secure   bool
 	HttpOnly bool
 	Raw      string
-	Unparsed []string // Raw text of unparsed attribute-value pairs
+	Unparsed []string
 }
 
 type Cookie struct {
@@ -34,59 +30,57 @@ type Cookie struct {
 func (c *Cookie) Set(name interface{}, params ...interface{}) (*http.Cookie, error) {
 	var cookie *http.Cookie
 
-	switch name.(type) {
+	switch v := name.(type) {
 	case *http.Cookie:
-		cookie = name.(*http.Cookie)
+		cookie = v
 	case string:
 		if len(params) == 0 {
 			return nil, errors.New("Invalid parameters for Cookie.")
 		}
 
-		value := params[0]
-		if _, ok := value.(string); !ok {
+		valStr, ok := params[0].(string)
+		if !ok {
 			return nil, errors.New("Invalid parameters for Cookie.")
 		}
+
+		expires := time.Time{}
+		if c.Config.ExpiresDuration > 0 {
+			expires = time.Now().Add(c.Config.ExpiresDuration)
+		}
+
 		cookie = &http.Cookie{
-			Name:     c.Config.Prefix + name.(string),
-			Value:    url.QueryEscape(value.(string)),
+			Name:     c.Config.Prefix + v,
+			Value:    url.QueryEscape(valStr),
 			Path:     c.Config.Path,
 			Domain:   c.Config.Domain,
-			Expires:  c.Config.Expires,
+			Expires:  expires,
 			MaxAge:   c.Config.MaxAge,
 			Secure:   c.Config.Secure,
 			HttpOnly: c.Config.HttpOnly,
 		}
 
 		if len(params) > 1 {
-			maxAge := params[1]
-			if _, ok := maxAge.(int); !ok {
-				return nil, errors.New("Invalid parameters for Cookie.")
+			if maxAge, ok := params[1].(int); ok {
+				cookie.MaxAge = maxAge
 			}
-			cookie.MaxAge = maxAge.(int)
 		}
 
 		if len(params) > 2 {
-			path := params[2]
-			if _, ok := path.(string); !ok {
-				return nil, errors.New("Invalid parameters for Cookie.")
+			if pathStr, ok := params[2].(string); ok {
+				cookie.Path = pathStr
 			}
-			cookie.Path = path.(string)
 		}
 
 		if len(params) > 3 {
-			domain := params[3]
-			if _, ok := domain.(string); !ok {
-				return nil, errors.New("Invalid parameters for Cookie.")
+			if domainStr, ok := params[3].(string); ok {
+				cookie.Domain = domainStr
 			}
-			cookie.Domain = domain.(string)
 		}
 
 		if len(params) > 4 {
-			secure := params[4]
-			if _, ok := secure.(bool); !ok {
-				return nil, errors.New("Invalid parameters for Cookie.")
+			if secureBool, ok := params[4].(bool); ok {
+				cookie.Secure = secureBool
 			}
-			cookie.Secure = secure.(bool)
 		}
 	default:
 		return nil, errors.New("Invalid parameters for Cookie.")
@@ -97,13 +91,13 @@ func (c *Cookie) Set(name interface{}, params ...interface{}) (*http.Cookie, err
 func ParseCookieHandler() *Cookie {
 	return &Cookie{
 		Config: &CookieConfig{
-			Prefix:   config.Cookie.Prefix,
-			Path:     config.Cookie.Path,
-			Domain:   config.Cookie.Domain,
-			Expires:  time.Now().Add(config.Cookie.Expires),
-			MaxAge:   config.Cookie.MaxAge,
-			Secure:   config.Cookie.Secure,
-			HttpOnly: config.Cookie.HttpOnly,
+			Prefix:          config.Cookie.Prefix,
+			Path:            config.Cookie.Path,
+			Domain:          config.Cookie.Domain,
+			ExpiresDuration: config.Cookie.Expires,
+			MaxAge:          config.Cookie.MaxAge,
+			Secure:          config.Cookie.Secure,
+			HttpOnly:        config.Cookie.HttpOnly,
 		},
 	}
 }

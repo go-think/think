@@ -27,47 +27,68 @@ type Route struct {
 
 	collects []*Route
 
+	trees    map[string]*node
 	rules    map[string]map[string]*Rule
 	allRules map[string]*Rule
-	// Current    *Rule
 }
 
 // New Create a new Route instance.
 func New() *Route {
 	route := &Route{
+		trees: make(map[string]*node),
 		rules: make(map[string]map[string]*Rule),
 	}
 	return route
 }
 
 // Dispatch Dispatch the request
-func (r *Route) Dispatch(request Request) (*Rule, error) {
-	rule, err := r.Match(request)
+func (r *Route) Dispatch(request Request) (*Rule, []*parameter, error) {
+	rule, treeParams, err := r.Match(request)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	rule.Bind(request.GetPath())
+	params := rule.Bind(request, request.GetPath(), treeParams)
 
-	return rule, nil
+	return rule, params, nil
 }
 
-// Match Find the first rule matching a given request.
-func (r *Route) Match(request Request) (*Rule, error) {
-	for _, rule := range r.rules[request.GetMethod()] {
-		if true == rule.Matches(request.GetMethod(), request.GetPath()) {
-			return rule, nil
+// Match Find the first rule matching a given request using Radix Tree with fallback.
+func (r *Route) Match(request Request) (*Rule, []*parameter, error) {
+	method := request.GetMethod()
+	path := request.GetPath()
+
+	// 优先利用 Radix Tree 索引
+	if tree, ok := r.trees[method]; ok {
+		if handle, ps, _ := tree.getValue(path); handle != nil {
+			if rule, ok := handle.(*Rule); ok {
+				// 将树解析到的动态参数同步至局部切片
+				ruleParams := make([]*parameter, 0, len(ps))
+				for _, p := range ps {
+					ruleParams = append(ruleParams, &parameter{
+						name:  p.Key,
+						value: p.Value,
+					})
+				}
+				return rule, ruleParams, nil
+			}
 		}
 	}
-	return nil, errors.New("Not Found")
+
+	// 降级使用正则法则库兜底
+	for _, rule := range r.rules[method] {
+		if true == rule.Matches(method, path) {
+			return rule, nil, nil
+		}
+	}
+	return nil, nil, errors.New("Not Found")
 }
 
-// AddRule Add a Rule to the Router.Rules
+// AddRule Add a Rule to the Router.Rules and Radix Tree
 func (r *Route) AddRule(rule *Rule) *Rule {
 	domainAndUri := rule.pattern
-	method := ""
-	for _, method = range rule.method {
-
+	for _, method := range rule.method {
+		// 添加到正则列表作为兜底
 		if _, ok := r.rules[method]; !ok {
 			r.rules[method] = map[string]*Rule{
 				domainAndUri: rule,
@@ -76,12 +97,19 @@ func (r *Route) AddRule(rule *Rule) *Rule {
 			r.rules[method][domainAndUri] = rule
 		}
 
+		// 构建/获取 Method 对应的 Radix Tree
+		rootNode, ok := r.trees[method]
+		if !ok {
+			rootNode = &node{}
+			r.trees[method] = rootNode
+		}
+		rootNode.addRoute(domainAndUri, rule)
 	}
 
 	if r.allRules == nil {
 		r.allRules = map[string]*Rule{}
 	}
-	r.allRules[method+domainAndUri] = rule
+	r.allRules[strings.Join(rule.method, "|")+domainAndUri] = rule
 
 	return rule
 }

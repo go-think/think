@@ -1,7 +1,10 @@
 package context
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"reflect"
 )
 
 type Response struct {
@@ -10,9 +13,30 @@ type Response struct {
 	charset       string
 	code          int
 	content       string
+	filePath      string
+	Request       *Request
 	cookies       map[string]*http.Cookie
 	CookieHandler *Cookie
 	Header        *http.Header
+}
+
+// FileResponse Create a response that serves a file
+func FileResponse(filepath string) *Response {
+	r := NewResponse()
+	r.filePath = filepath
+	return r
+}
+
+// SetFile set a file path to be served
+func (r *Response) SetFile(filepath string) *Response {
+	r.filePath = filepath
+	return r
+}
+
+// SetRequest bind original request for file serving
+func (r *Response) SetRequest(req *Request) *Response {
+	r.Request = req
+	return r
 }
 
 // GetContentType sets the Content-Type on the response.
@@ -39,6 +63,30 @@ func (r *Response) SetContent(val string) *Response {
 	return r
 }
 
+func FormatContent(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	t := reflect.TypeOf(v)
+	switch t.Kind() {
+	case reflect.Bool:
+		return fmt.Sprintf("%t", v)
+	case reflect.String:
+		return fmt.Sprintf("%s", v)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return fmt.Sprintf("%d", v)
+	case reflect.Float32, reflect.Float64:
+		return fmt.Sprintf("%v", v)
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(b)
+	}
+}
+
 // GetContentType get the Content-Type on the response.
 func (r *Response) GetContentType() string {
 	return r.contentType
@@ -61,9 +109,12 @@ func (r *Response) GetContent() string {
 
 // Cookie Add a cookie to the response.
 func (r *Response) Cookie(name interface{}, params ...interface{}) error {
+	if r.CookieHandler == nil {
+		r.CookieHandler = ParseCookieHandler()
+	}
 	cookie, err := r.CookieHandler.Set(name, params...)
 
-	if err != nil {
+	if err == nil && cookie != nil {
 		if r.cookies == nil {
 			r.cookies = make(map[string]*http.Cookie)
 		}
@@ -83,6 +134,15 @@ func (r *Response) Send(w http.ResponseWriter) {
 			w.Header().Add(key, val)
 		}
 	}
+
+	// 如果设置了文件路径，优先使用 http.ServeFile 传输文件
+	if r.filePath != "" {
+		if r.Request != nil && r.Request.Request != nil {
+			http.ServeFile(w, r.Request.Request, r.filePath)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", r.GetContentType()+";"+" charset="+r.GetCharset())
 	// r.Header.Write(w)
 	w.WriteHeader(r.GetCode())

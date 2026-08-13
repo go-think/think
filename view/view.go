@@ -3,7 +3,10 @@ package view
 import (
 	"bytes"
 	"html/template"
+	"os"
 	"path"
+	"path/filepath"
+	"strings"
 )
 
 // the default View.
@@ -19,9 +22,23 @@ func New() *View {
 }
 
 // ParseGlob creates a new Template and parses the template definitions from the
-// files identified by the pattern, which must match at least one file.
+// files identified by the pattern.
 func (v *View) ParseGlob(pattern string) {
-	v.tmpl = template.Must(template.ParseGlob(pattern))
+	if pattern == "" {
+		return
+	}
+
+	// 如果传入的是目录路径，自动增加通配符
+	if fi, err := os.Stat(pattern); err == nil && fi.IsDir() {
+		pattern = filepath.Join(pattern, "*")
+	} else if !strings.Contains(pattern, "*") {
+		pattern = pattern + "/*"
+	}
+
+	t, err := template.ParseGlob(pattern)
+	if err == nil {
+		v.tmpl = t
+	}
 }
 
 func (v *View) Render(name string, data interface{}) template.HTML {
@@ -29,10 +46,18 @@ func (v *View) Render(name string, data interface{}) template.HTML {
 	if tmpl == nil {
 		pattern := path.Join(path.Dir(name), "*")
 		name = path.Base(name)
-		tmpl = template.Must(template.ParseGlob(pattern))
+		t, err := template.ParseGlob(pattern)
+		if err == nil {
+			tmpl = t
+		}
 	}
+
+	if tmpl == nil {
+		return ""
+	}
+
 	var buf bytes.Buffer
-	tmpl.ExecuteTemplate(&buf, name, data)
+	_ = tmpl.ExecuteTemplate(&buf, name, data)
 
 	return template.HTML(buf.String())
 }
@@ -42,5 +67,6 @@ func Render(name string, data interface{}) template.HTML {
 }
 
 func ParseGlob(pattern string) {
-	view.tmpl = template.Must(template.ParseGlob(pattern))
+	view.ParseGlob(pattern)
 }
+

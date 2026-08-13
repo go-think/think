@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 	"time"
 )
 
 type Store struct {
+	mu         sync.RWMutex
 	name       string
 	id         string
 	handler    Handler
@@ -32,14 +34,17 @@ func (s *Store) GetHandler() Handler {
 }
 
 func (s *Store) GetId() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.id
 }
 
 func (s *Store) SetId(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(id) < 1 {
 		id = generateSessionId()
 	}
-
 	s.id = id
 }
 
@@ -48,20 +53,35 @@ func (s *Store) GetName() string {
 }
 
 func (s *Store) Start() {
-	data := s.handler.Read(s.GetId())
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	decodeData, _ := base64.StdEncoding.DecodeString(data)
+	if s.id == "" {
+		s.id = generateSessionId()
+	}
+
+	data := s.handler.Read(s.id)
+	if data == "" {
+		return
+	}
+
+	decodeData, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return
+	}
 
 	udata := make(map[string]interface{})
-
-	json.Unmarshal(decodeData, &udata)
-
-	for k, v := range udata {
-		s.attributes[k] = v
+	if err := json.Unmarshal(decodeData, &udata); err == nil {
+		for k, v := range udata {
+			s.attributes[k] = v
+		}
 	}
 }
 
 func (s *Store) Get(name string, value ...interface{}) interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if v, ok := s.attributes[name]; ok {
 		return v
 	}
@@ -72,40 +92,70 @@ func (s *Store) Get(name string, value ...interface{}) interface{} {
 }
 
 func (s *Store) Set(name string, value interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.attributes == nil {
+		s.attributes = make(map[string]interface{})
+	}
 	s.attributes[name] = value
 }
 
 func (s *Store) All() map[string]interface{} {
-	return s.attributes
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]interface{})
+	for k, v := range s.attributes {
+		result[k] = v
+	}
+	return result
 }
 
 func (s *Store) Remove(name string) interface{} {
-	value := s.Get(name)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	value := s.attributes[name]
 	delete(s.attributes, name)
 	return value
 }
 
 func (s *Store) Forget(names ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, name := range names {
 		delete(s.attributes, name)
 	}
 }
 
 func (s *Store) Clear() {
-	s.attributes = nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.attributes = make(map[string]interface{})
 }
 
 func (s *Store) Save() {
-	data, _ := json.Marshal(s.attributes)
+	s.mu.RLock()
+	data, err := json.Marshal(s.attributes)
+	id := s.id
+	handler := s.handler
+	s.mu.RUnlock()
+
+	if err != nil {
+		return
+	}
 
 	encodeData := base64.StdEncoding.EncodeToString(data)
-	s.handler.Write(s.GetId(), encodeData)
+	handler.Write(id, encodeData)
 }
 
 func generateSessionId() string {
 	id := strconv.FormatInt(time.Now().UnixNano(), 10)
 	b := make([]byte, 48)
-	io.ReadFull(rand.Reader, b)
+	_, _ = io.ReadFull(rand.Reader, b)
 	id = id + base64.URLEncoding.EncodeToString(b)
 
 	h := sha1.New()
@@ -113,3 +163,4 @@ func generateSessionId() string {
 
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
+

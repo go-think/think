@@ -1,8 +1,7 @@
-package thinkgo
+package think
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 
@@ -11,7 +10,10 @@ import (
 
 // Json Create a new HTTP Response with JSON data
 func Json(v interface{}) *context.Response {
-	c, _ := json.Marshal(v)
+	c, err := json.Marshal(v)
+	if err != nil {
+		return context.NewResponse().SetContent("").SetContentType("application/json")
+	}
 	return context.NewResponse().SetContent(string(c)).SetContentType("application/json")
 }
 
@@ -20,36 +22,50 @@ func Text(s string) *context.Response {
 	return context.NewResponse().SetContent(s).SetContentType("text/plain")
 }
 
-// Text Create a new HTTP Response with HTML data
+// Html Create a new HTTP Response with HTML data
 func Html(s string) *context.Response {
 	return context.NewResponse().SetContent(s)
 }
 
-func Response(v interface{}) *context.Response {
-	r := context.NewResponse()
-	r.SetContentType("text/plain")
-
-	var content string
+func FormatContent(v interface{}) string {
+	if v == nil {
+		return ""
+	}
 	t := reflect.TypeOf(v)
 	switch t.Kind() {
 	case reflect.Bool:
-		content = fmt.Sprintf("%t", v)
+		return fmt.Sprintf("%t", v)
 	case reflect.String:
-		content = fmt.Sprintf("%s", v)
+		return fmt.Sprintf("%s", v)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		content = fmt.Sprintf("%d", v)
+		return fmt.Sprintf("%d", v)
 	case reflect.Float32, reflect.Float64:
-		content = fmt.Sprintf("%v", v)
+		return fmt.Sprintf("%v", v)
 	default:
-		r.SetContentType("application/json")
 		b, err := json.Marshal(v)
 		if err != nil {
-			panic(errors.New(`The Response content must be a string, numeric, boolean, slice, map or can be encoded as json a string, "` + t.Name() + `" given.`))
+			return fmt.Sprintf("%v", v)
 		}
-		content = string(b)
+		return string(b)
+	}
+}
+
+func Response(v interface{}) *context.Response {
+	r := context.NewResponse()
+	if v == nil {
+		return r.SetContent("")
+	}
+
+	content := FormatContent(v)
+	t := reflect.TypeOf(v)
+	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice || t.Kind() == reflect.Struct {
+		r.SetContentType("application/json")
+	} else {
+		r.SetContentType("text/plain")
 	}
 	r.SetContent(content)
 
 	return r
 }
+
