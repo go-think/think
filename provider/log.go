@@ -27,8 +27,8 @@ func (p *LogServiceProvider) Register(app *container.Container) {
 	}
 
 	app.Singleton[contract.Logger](loggerFactory)
-	app.Alias("logger", "Logger")
-	app.Alias("log", "Logger")
+	app.Alias[contract.Logger]("logger")
+	app.Alias[contract.Logger]("log")
 }
 
 // Boot boots the log service provider.

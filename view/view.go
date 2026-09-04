@@ -69,4 +69,3 @@ func Render(name string, data interface{}) template.HTML {
 func ParseGlob(pattern string) {
 	view.ParseGlob(pattern)
 }
-

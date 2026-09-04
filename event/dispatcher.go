@@ -3,6 +3,7 @@ package event
 import (
 	"reflect"
 	"sync"
+
 	"github.com/go-think/think/contract"
 )
 
@@ -64,8 +65,13 @@ func (d *Dispatcher) executeListener(listener interface{}, payload interface{}) 
 
 	var out []reflect.Value
 	if v.Type().NumIn() == 1 {
-		in := []reflect.Value{reflect.ValueOf(payload)}
-		out = v.Call(in)
+		var inVal reflect.Value
+		if payload != nil {
+			inVal = reflect.ValueOf(payload)
+		} else {
+			inVal = reflect.Zero(v.Type().In(0))
+		}
+		out = v.Call([]reflect.Value{inVal})
 	} else if v.Type().NumIn() == 0 {
 		out = v.Call(nil)
 	}

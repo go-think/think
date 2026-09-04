@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-think/flow"
 	"github.com/go-think/think/console"
 	"github.com/go-think/think/contract"
+	"github.com/go-think/think/exception"
 	"github.com/go-think/think/helper"
 	thinkHttp "github.com/go-think/think/http"
-	"github.com/go-think/think/middleware"
-	"github.com/go-think/think/router"
 )
 
 // HttpKernel gets the HttpKernel instance from the container (auto-binds default if not registered).
@@ -25,7 +25,23 @@ func (a *Application) HttpKernel() contract.HttpKernel {
 
 	// Auto-bind default HTTP Kernel if not yet registered
 	kernel := thinkHttp.NewKernel(a.Container)
-	kernel.AddGlobalMiddleware(middleware.NewRecoverHandler(true))
+
+	flow.HandleException = func(err interface{}) *flow.Response {
+		if handler := a.Make[contract.ExceptionHandler](); handler != nil {
+			handler.Report(err)
+			if res, ok := handler.Render(err).(*flow.Response); ok {
+				return res
+			}
+		}
+		if he, ok := err.(*exception.HttpException); ok {
+			response := flow.NewResponse()
+			response.SetCode(he.Code)
+			response.SetContent(he.Message)
+			return response
+		}
+		return nil
+	}
+	kernel.AddGlobalMiddleware(flow.NewRecoverMiddleware(true))
 	a.Instance[contract.HttpKernel](kernel)
 	return kernel
 }
@@ -86,7 +102,7 @@ func (a *Application) Run(params ...string) {
 	srv := a.BuildServer(params...)
 
 	logger := a.Make[contract.Logger]()
-	r := a.Make[*router.Route]()
+	r := a.Make[flow.Router]()
 
 	if logger != nil && r != nil {
 		logger.Debug("\r\nLoaded routes:\r\n%s", string(r.Dump()))
@@ -118,7 +134,11 @@ func (a *Application) Run(params ...string) {
 		logger.Debug("Think application server running on http://%s", srv.Addr)
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		fmt.Printf("HTTP server ListenAndServe error: %v\n", err)
+		if logger != nil {
+			logger.Error("HTTP server ListenAndServe error: %v", err)
+		} else {
+			fmt.Printf("HTTP server ListenAndServe error: %v\n", err)
+		}
 	}
 
 	// Close channel to notify listener and complete shutdown

@@ -94,4 +94,3 @@ func GetInt(key string, defaultVal ...int) int {
 	}
 	return res
 }
-

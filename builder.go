@@ -1,22 +1,21 @@
 package think
 
 import (
+	"github.com/go-think/flow"
 	"github.com/go-think/think/console"
 	"github.com/go-think/think/contract"
 	"github.com/go-think/think/exception"
-	"github.com/go-think/think/flow"
 	thinkHttp "github.com/go-think/think/http"
-	"github.com/go-think/think/middleware"
-	"github.com/go-think/think/router"
+
 	"github.com/go-think/think/support"
 	"github.com/go-think/think/support/env"
 )
 
 // Routing defines the routing callbacks and health check endpoints for ApplicationBuilder.
 type Routing struct {
-	Web       func(r *router.Route)
-	Api       func(r *router.Route)
-	ApiPrefix string // Prefix for API routes (default: "api")
+	Web       func(r flow.Router)
+	Api       func(r flow.Router)
+	ApiPrefix string // Prefix for API routes (default: "api", use "/" or "none" for root)
 	Health    string // Path to health check endpoint (e.g. "/up")
 }
 
@@ -50,18 +49,18 @@ func (m *MiddlewareConfig) Alias(name string, middleware interface{}) *Middlewar
 }
 
 // Cors registers the standard CORS middleware globally.
-func (m *MiddlewareConfig) Cors(config ...middleware.CorsConfig) *MiddlewareConfig {
-	return m.Use(middleware.NewCorsHandler(config...))
+func (m *MiddlewareConfig) Cors(config ...flow.CorsConfig) *MiddlewareConfig {
+	return m.Use(flow.NewCorsMiddleware(config...))
 }
 
 // TrimStrings registers the parameter trimming middleware globally.
 func (m *MiddlewareConfig) TrimStrings(except ...string) *MiddlewareConfig {
-	return m.Use(middleware.NewTrimStringsHandler(except...))
+	return m.Use(flow.NewTrimStringsMiddleware(except...))
 }
 
 // ValidateSignatures registers the URL signature validation middleware.
 func (m *MiddlewareConfig) ValidateSignatures() *MiddlewareConfig {
-	return m.Use(middleware.NewValidateSignatureHandler())
+	return m.Use(flow.NewValidateSignatureMiddleware())
 }
 
 // ExceptionsConfig provides custom exception reporting and rendering callbacks.
@@ -122,8 +121,25 @@ func (b *ApplicationBuilder) WithKernels() *ApplicationBuilder {
 	if b.app.Make[contract.HttpKernel]() == nil {
 		kernel := thinkHttp.NewKernel(b.app.Container)
 		b.app.Instance[contract.HttpKernel](kernel)
+
+		flow.HandleException = func(err interface{}) *flow.Response {
+			if handler := b.app.Make[contract.ExceptionHandler](); handler != nil {
+				handler.Report(err)
+				if res, ok := handler.Render(err).(*flow.Response); ok {
+					return res
+				}
+			}
+			if he, ok := err.(*exception.HttpException); ok {
+				response := flow.NewResponse()
+				response.SetCode(he.Code)
+				response.SetContent(he.Message)
+				return response
+			}
+			return nil
+		}
+
 		// Add global recover middleware to Kernel automatically
-		kernel.AddGlobalMiddleware(middleware.NewRecoverHandler(true))
+		kernel.AddGlobalMiddleware(flow.NewRecoverMiddleware(true))
 	}
 
 	// 2. Register Console Kernel
@@ -172,7 +188,7 @@ func (b *ApplicationBuilder) WithCommands(commands ...interface{}) *ApplicationB
 
 // WithRouting registers application route definitions and optional health check.
 func (b *ApplicationBuilder) WithRouting(routing Routing) *ApplicationBuilder {
-	r := b.app.Make[*router.Route]()
+	r := b.app.Make[flow.Router]()
 	if r == nil {
 		return b
 	}
@@ -182,16 +198,18 @@ func (b *ApplicationBuilder) WithRouting(routing Routing) *ApplicationBuilder {
 		routing.Web(r)
 	}
 
-	// 2. Register API routes (if ApiPrefix is explicitly provided, wrap with Prefix Group; otherwise pass root router directly)
+	// 2. Register API routes (defaults to "api" prefix if not specified)
 	if routing.Api != nil {
-		if routing.ApiPrefix != "" {
-			r.Prefix(routing.ApiPrefix).Group(func(group contract.Router) {
-				if gr, ok := group.(*router.Route); ok {
-					routing.Api(gr)
-				}
-			})
-		} else {
+		prefix := routing.ApiPrefix
+		if prefix == "" {
+			prefix = "api"
+		}
+		if prefix == "/" || prefix == "none" {
 			routing.Api(r)
+		} else {
+			r.Prefix(prefix).Group(func(group flow.Router) {
+				routing.Api(group)
+			})
 		}
 	}
 

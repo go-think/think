@@ -59,7 +59,7 @@ func New(basePath ...string) *Application {
 
 	// 3. Register base service providers
 	app.registerBaseServiceProviders()
-	
+
 	return app
 }
 
@@ -198,12 +198,12 @@ func (a *Application) registerBaseBindings() {
 	// Bind application & container singletons
 	a.Instance[*Application](a)
 	a.Instance[contract.Application](a)
-	a.Alias("app", "Application")
+	a.Alias[contract.Application]("app")
 
 	// Early base config repository
 	baseConfig := config.Default()
 	a.Instance[contract.Config](baseConfig)
-	a.Alias("config", "Config")
+	a.Alias[contract.Config]("config")
 }
 
 // registerBaseServiceProviders registers core base infrastructure service providers.
@@ -211,6 +211,7 @@ func (a *Application) registerBaseServiceProviders() {
 	a.Register(&provider.EventServiceProvider{})
 	a.Register(&provider.LogServiceProvider{})
 	a.Register(&provider.RoutingServiceProvider{})
+	a.Register(&provider.CacheServiceProvider{})
 }
 
 // bindPathsInContainer binds all application path singletons in the container.

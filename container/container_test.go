@@ -2,6 +2,7 @@ package container
 
 import (
 	"testing"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -107,4 +108,112 @@ func TestContainerCallInjection(t *testing.T) {
 
 	assert.Len(t, results, 1)
 	assert.Equal(t, "localhost", results[0])
+}
+
+// Reader is an interface for testing interface-to-implementation binding.
+type Reader interface {
+	ReadData() string
+}
+
+type FileReader struct {
+	Path string
+}
+
+func (f *FileReader) ReadData() string {
+	return "file:" + f.Path
+}
+
+func TestContainer_InterfaceBinding_Func(t *testing.T) {
+	c := New()
+
+	// Register interface Reader bound to concrete *FileReader via factory func
+	c.Singleton[Reader](func() *FileReader {
+		return &FileReader{Path: "/etc/config"}
+	})
+
+	reader := c.Make[Reader]()
+	assert.NotNil(t, reader)
+	assert.Equal(t, "file:/etc/config", reader.ReadData())
+}
+
+func TestContainer_InterfaceBinding_Object(t *testing.T) {
+	c := New()
+
+	// Register interface Reader directly bound to concrete implementation instance
+	c.Singleton[Reader](&FileReader{Path: "/app/data"})
+
+	reader := c.Make[Reader]()
+	assert.NotNil(t, reader)
+	assert.Equal(t, "file:/app/data", reader.ReadData())
+}
+
+func TestContainer_TypeSafeAlias(t *testing.T) {
+	c := New()
+
+	c.Singleton[*Database](func() *Database {
+		return &Database{URL: "postgres://localhost"}
+	})
+
+	// 1. Alias using pointer type: c.Alias[*Database]("db")
+	c.Alias[*Database]("db")
+	resolved1 := c.MakeByName("db")
+	assert.NotNil(t, resolved1)
+	db1, ok := resolved1.(*Database)
+	assert.True(t, ok)
+	assert.Equal(t, "postgres://localhost", db1.URL)
+
+	// 2. Also resolvable via generic Make[*Database]("db")
+	resolved2 := c.Make[*Database]("db")
+	assert.NotNil(t, resolved2)
+	assert.Equal(t, "postgres://localhost", resolved2.URL)
+}
+
+func TestContainer_NoShortNameCollision(t *testing.T) {
+	c := New()
+
+	type ServiceA struct {
+		Name string
+	}
+	type ServiceB struct {
+		Name string
+	}
+
+	c.Singleton[*ServiceA](func() *ServiceA {
+		return &ServiceA{Name: "Alpha"}
+	})
+	c.Singleton[*ServiceB](func() *ServiceB {
+		return &ServiceB{Name: "Beta"}
+	})
+
+	// Both should resolve safely by their distinct types without any collision
+	a := c.Make[*ServiceA]()
+	b := c.Make[*ServiceB]()
+
+	assert.NotNil(t, a)
+	assert.NotNil(t, b)
+	assert.Equal(t, "Alpha", a.Name)
+	assert.Equal(t, "Beta", b.Name)
+}
+
+func TestContainer_Resolve_And_Invoke_Safe(t *testing.T) {
+	c := New()
+
+	// 1. Resolve for unregistered service returns explicit error
+	type NonExistent struct{}
+	val, err := c.Resolve[*NonExistent]()
+	assert.Error(t, err)
+	assert.Nil(t, val)
+
+	// Make for unregistered service safely returns nil without panic
+	safeMake := c.Make[*NonExistent]()
+	assert.Nil(t, safeMake)
+
+	// 2. Invoke for non-function returns error instead of panic
+	out, err := c.Invoke("not_a_function")
+	assert.Error(t, err)
+	assert.Nil(t, out)
+
+	// Call for non-function safely returns nil without panic
+	safeCall := c.Call(12345)
+	assert.Nil(t, safeCall)
 }

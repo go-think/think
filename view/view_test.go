@@ -1,9 +1,10 @@
 package view
 
 import (
-	"github.com/stretchr/testify/assert"
 	"html/template"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestView_Render(t *testing.T) {

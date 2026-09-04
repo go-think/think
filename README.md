@@ -51,15 +51,14 @@ package main
 import (
 	"fmt"
 
+	"github.com/go-think/flow"
 	"github.com/go-think/think"
-	"github.com/go-think/think/flow"
-	"github.com/go-think/think/router"
 )
 
 func main() {
 	app := think.Configure().
 		WithRouting(think.Routing{
-			Web: func(r *router.Route) {
+			Web: func(r flow.Router) {
 				r.Get("/", func() *flow.Response {
 					return flow.Text("Hello Think!")
 				})
@@ -90,18 +89,18 @@ Or you can use the classic instantiation style:
 package main
 
 import (
+	"github.com/go-think/flow"
 	"github.com/go-think/think"
-	"github.com/go-think/think/flow"
-	"github.com/go-think/think/router"
 )
 
 func main() {
 	app := think.New()
-	app.RegisterRoute(func(r *router.Route) {
-		r.Get("/", func() *flow.Response {
-			return flow.Text("Hello Think!")
-		})
+	r := app.Make[flow.Router]()
+	r.Get("/", func() *flow.Response {
+		return flow.Text("Hello Think!")
 	})
+	r.Register()
+
 	app.Run(":9011")
 }
 ```
@@ -211,12 +210,10 @@ r.Get("/user/{code}", getUser).Where("code", "^[A-Z]{3}-[0-9]{4}$")
 Share common middleware or path prefixes across a collection of routes:
 
 ```go
-import "github.com/go-think/think/contract"
-
-r.Prefix("/admin").Group(func(admin contract.Router) {
+r.Prefix("/admin").Group(func(admin flow.Router) {
 	admin.Get("/dashboard", adminDashboard)
 
-	admin.Prefix("/users").Group(func(users contract.Router) {
+	admin.Prefix("/users").Group(func(users flow.Router) {
 		users.Get("", listAdminUsers)
 		users.Get("/{id}", getAdminUser)
 	})
@@ -259,7 +256,7 @@ Middleware provide a convenient mechanism for inspecting and filtering HTTP requ
 Implement a standard middleware closure:
 
 ```go
-func AuthMiddleware(req *flow.Request, next middleware.Closure) interface{} {
+func AuthMiddleware(req *flow.Request, next flow.Closure) interface{} {
 	token := req.Header("Authorization")
 	if token == "" {
 		return flow.NewResponse().SetCode(401).SetContent("Unauthorized")
@@ -273,12 +270,12 @@ func AuthMiddleware(req *flow.Request, next middleware.Closure) interface{} {
 r.Get("/secret", secretHandler).Middleware(AuthMiddleware)
 ```
 
-Or implement the `middleware.Handler` interface:
+Or implement the `flow.Handler` interface:
 
 ```go
 type MyMiddleware struct{}
 
-func (m *MyMiddleware) Process(req *flow.Request, next middleware.Closure) interface{} {
+func (m *MyMiddleware) Process(req *flow.Request, next flow.Closure) any {
 	// Perform action before handler
 	res := next(req)
 	// Perform action after handler

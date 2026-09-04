@@ -78,7 +78,7 @@ func (r *Repository) Set(key string, value interface{}) {
 		if _, exists := current[k]; !exists {
 			current[k] = make(map[string]interface{})
 		}
-		
+
 		if m, ok := current[k].(map[string]interface{}); ok {
 			current = m
 		} else {
@@ -291,5 +291,3 @@ func (r *Repository) GetMany(keys []string) map[string]interface{} {
 	}
 	return results
 }
-
-

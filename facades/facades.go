@@ -1,6 +1,8 @@
 package facades
 
 import (
+	"github.com/go-think/cache"
+	"github.com/go-think/flow"
 	"github.com/go-think/think/container"
 	"github.com/go-think/think/contract"
 )
@@ -30,8 +32,8 @@ func Config() contract.Config {
 }
 
 // Route returns the global Router instance.
-func Route() contract.Router {
-	return Container().Make[contract.Router]()
+func Route() flow.Router {
+	return Container().Make[flow.Router]()
 }
 
 // Event returns the global EventDispatcher instance.
@@ -44,3 +46,7 @@ func Log() contract.Logger {
 	return Container().Make[contract.Logger]()
 }
 
+// Cache returns the global Cache repository instance.
+func Cache() *cache.Repository {
+	return Container().Make[*cache.Repository]()
+}

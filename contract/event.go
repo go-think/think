@@ -4,7 +4,7 @@ package contract
 type EventDispatcher interface {
 	// Dispatch fires an event with the given payload.
 	Dispatch(event string, payload interface{})
-	
+
 	// Listen registers a listener for a given event.
 	Listen(event string, listener interface{})
 

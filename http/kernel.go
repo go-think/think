@@ -2,20 +2,20 @@ package http
 
 import (
 	"net/http"
+	"sync"
 
+	"github.com/go-think/flow"
 	"github.com/go-think/think/container"
 	"github.com/go-think/think/contract"
-	"github.com/go-think/think/flow"
-	"github.com/go-think/think/middleware"
-	"github.com/go-think/think/pipeline"
-	"github.com/go-think/think/router"
 )
 
 type Kernel struct {
+	sync.RWMutex
 	app              *container.Container
 	globalMiddleware []interface{}
 	routeMiddleware  map[string]interface{}
 	middlewareGroups map[string][]interface{}
+	bootstrapOnce    sync.Once
 }
 
 func NewKernel(app *container.Container) contract.HttpKernel {
@@ -29,18 +29,31 @@ func NewKernel(app *container.Container) contract.HttpKernel {
 
 // Bootstrap bootstraps the application for HTTP requests.
 func (k *Kernel) Bootstrap() {
-	if app := k.app.Make[contract.Application](); app != nil {
-		if b, ok := app.(interface {
-			HasBeenBootstrapped() bool
-			Bootstrap()
-			Boot()
-		}); ok {
-			if !b.HasBeenBootstrapped() {
-				b.Bootstrap()
+	k.bootstrapOnce.Do(func() {
+		if app := k.app.Make[contract.Application](); app != nil {
+			if b, ok := app.(interface {
+				HasBeenBootstrapped() bool
+				Bootstrap()
+				Boot()
+			}); ok {
+				if !b.HasBeenBootstrapped() {
+					b.Bootstrap()
+				}
+				b.Boot()
 			}
-			b.Boot()
 		}
-	}
+
+		if r := k.app.Make[flow.Router](); r != nil {
+			k.RLock()
+			for name, m := range k.routeMiddleware {
+				r.AliasMiddleware(name, m)
+			}
+			for name, g := range k.middlewareGroups {
+				r.MiddlewareGroup(name, g...)
+			}
+			k.RUnlock()
+		}
+	})
 }
 
 func (k *Kernel) Handle(request interface{}) interface{} {
@@ -52,21 +65,26 @@ func (k *Kernel) Handle(request interface{}) interface{} {
 		return nil
 	}
 
-	pipe := pipeline.NewPipeline()
+	pipe := flow.NewPipeline()
 
-	// Append Global Middlewares (we need to cast them to middleware.Handler)
-	for _, m := range k.globalMiddleware {
-		if md, ok := m.(middleware.Handler); ok {
+	// Append Global Middlewares (we need to cast them to flow.Handler)
+	k.RLock()
+	global := make([]interface{}, len(k.globalMiddleware))
+	copy(global, k.globalMiddleware)
+	k.RUnlock()
+
+	for _, m := range global {
+		if md, ok := m.(flow.Handler); ok {
 			pipe.Pipe(md)
 		}
 	}
 
 	// Dispatch to router
-	if r := k.app.Make[*router.Route](); r != nil {
-		pipe.Pipe(middleware.NewRouteHandler(r))
+	if r := k.app.Make[flow.Router](); r != nil {
+		pipe.Pipe(flow.NewRouteMiddleware(r))
 	}
 
-	result := pipe.Run(req)
+	result := pipe.Send(req).Then(nil)
 
 	return result
 }
@@ -74,16 +92,29 @@ func (k *Kernel) Handle(request interface{}) interface{} {
 func (k *Kernel) Terminate(req *flow.Request, response interface{}) {
 	// Execute global and route terminable middlewares asynchronously
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				if logger := k.app.Make[contract.Logger](); logger != nil {
+					logger.Error("Kernel Terminate panic: %v", err)
+				}
+			}
+		}()
+
 		// Global Middlewares
-		for _, m := range k.globalMiddleware {
-			if terminable, ok := m.(middleware.Terminable); ok {
+		k.RLock()
+		global := make([]interface{}, len(k.globalMiddleware))
+		copy(global, k.globalMiddleware)
+		k.RUnlock()
+
+		for _, m := range global {
+			if terminable, ok := m.(flow.Terminable); ok {
 				terminable.Terminate(req, response)
 			}
 		}
 
 		// Route Middlewares
 		for _, m := range req.RouteMiddlewares() {
-			if terminable, ok := m.(middleware.Terminable); ok {
+			if terminable, ok := m.(flow.Terminable); ok {
 				terminable.Terminate(req, response)
 			}
 		}
@@ -92,9 +123,6 @@ func (k *Kernel) Terminate(req *flow.Request, response interface{}) {
 		if dispatcher := k.app.Make[contract.EventDispatcher](); dispatcher != nil {
 			dispatcher.Dispatch("kernel.terminating", req)
 		}
-
-		// Flush request-scoped container instances
-		k.app.FlushScoped()
 	}()
 }
 
@@ -118,24 +146,34 @@ func (k *Kernel) ServeHTTP(w interface{}, r interface{}) {
 			flow.NewResponse().SetContent(flow.FormatContent(result)).Send(writer)
 		}
 	}
-	
+
 	// Dispatch kernel.handled event
 	if dispatcher := k.app.Make[contract.EventDispatcher](); dispatcher != nil {
 		dispatcher.Dispatch("kernel.handled", ctxReq)
 	}
-	
+
 	k.Terminate(ctxReq, result)
 }
 
 func (k *Kernel) AddGlobalMiddleware(middleware ...interface{}) {
+	k.Lock()
+	defer k.Unlock()
 	k.globalMiddleware = append(k.globalMiddleware, middleware...)
 }
 
 func (k *Kernel) AddRouteMiddleware(name string, middleware interface{}) {
+	k.Lock()
 	k.routeMiddleware[name] = middleware
+	k.Unlock()
+
+	if r := k.app.Make[flow.Router](); r != nil {
+		r.AliasMiddleware(name, middleware)
+	}
 }
 
 func (k *Kernel) GetRouteMiddleware(name string) interface{} {
+	k.RLock()
+	defer k.RUnlock()
 	if m, ok := k.routeMiddleware[name]; ok {
 		return m
 	}
@@ -143,10 +181,18 @@ func (k *Kernel) GetRouteMiddleware(name string) interface{} {
 }
 
 func (k *Kernel) AddMiddlewareGroup(name string, middlewares []interface{}) {
+	k.Lock()
 	k.middlewareGroups[name] = middlewares
+	k.Unlock()
+
+	if r := k.app.Make[flow.Router](); r != nil {
+		r.MiddlewareGroup(name, middlewares...)
+	}
 }
 
 func (k *Kernel) GetMiddlewareGroup(name string) []interface{} {
+	k.RLock()
+	defer k.RUnlock()
 	if m, ok := k.middlewareGroups[name]; ok {
 		return m
 	}
@@ -154,5 +200,9 @@ func (k *Kernel) GetMiddlewareGroup(name string) []interface{} {
 }
 
 func (k *Kernel) GetGlobalMiddleware() []interface{} {
-	return k.globalMiddleware
+	k.RLock()
+	defer k.RUnlock()
+	copied := make([]interface{}, len(k.globalMiddleware))
+	copy(copied, k.globalMiddleware)
+	return copied
 }

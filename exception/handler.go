@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-think/think/flow"
+	"github.com/go-think/flow"
 	"github.com/go-think/think/contract"
 )
 

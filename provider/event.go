@@ -13,7 +13,7 @@ type EventServiceProvider struct{}
 func (p *EventServiceProvider) Register(app *container.Container) {
 	dispatcher := event.NewDispatcher()
 	app.Instance[contract.EventDispatcher](dispatcher)
-	app.Alias("events", "EventDispatcher")
+	app.Alias[contract.EventDispatcher]("events")
 }
 
 // Boot boots the event service provider.
