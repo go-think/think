@@ -28,7 +28,7 @@ func (v *View) ParseGlob(pattern string) {
 		return
 	}
 
-	// 如果传入的是目录路径，自动增加通配符
+	// If the provided path is a directory, automatically add wildcard
 	if fi, err := os.Stat(pattern); err == nil && fi.IsDir() {
 		pattern = filepath.Join(pattern, "*")
 	} else if !strings.Contains(pattern, "*") {

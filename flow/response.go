@@ -1,14 +1,16 @@
-package context
+package flow
 
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"reflect"
 )
 
 type Response struct {
-	// Writer      context.ResponseWriter
+	// Writer      flow.ResponseWriter
 	contentType   string
 	charset       string
 	code          int
@@ -18,6 +20,20 @@ type Response struct {
 	cookies       map[string]*http.Cookie
 	CookieHandler *Cookie
 	Header        *http.Header
+	streamFunc    func(w io.Writer) bool
+	handled       bool
+}
+
+// HandledResponse creates a response indicating that output was directly handled.
+func HandledResponse() *Response {
+	r := NewResponse()
+	r.handled = true
+	return r
+}
+
+// IsHandled returns whether the response was already handled directly.
+func (r *Response) IsHandled() bool {
+	return r.handled
 }
 
 // FileResponse Create a response that serves a file
@@ -126,6 +142,10 @@ func (r *Response) Cookie(name interface{}, params ...interface{}) error {
 
 // Send Sends HTTP headers and content.
 func (r *Response) Send(w http.ResponseWriter) {
+	if r.handled {
+		return
+	}
+
 	for _, cookie := range r.cookies {
 		http.SetCookie(w, cookie)
 	}
@@ -135,10 +155,30 @@ func (r *Response) Send(w http.ResponseWriter) {
 		}
 	}
 
-	// 如果设置了文件路径，优先使用 http.ServeFile 传输文件
+	// If filePath is set, prioritize using http.ServeFile to serve the file
 	if r.filePath != "" {
 		if r.Request != nil && r.Request.Request != nil {
 			http.ServeFile(w, r.Request.Request, r.filePath)
+		}
+		return
+	}
+
+	// If streamFunc is set, handle streaming output (stream / SSE)
+	if r.streamFunc != nil {
+		if r.GetContentType() != "" {
+			w.Header().Set("Content-Type", r.GetContentType())
+		}
+		w.WriteHeader(r.GetCode())
+
+		flusher, isFlusher := w.(http.Flusher)
+		for {
+			keepStreaming := r.streamFunc(w)
+			if isFlusher {
+				flusher.Flush()
+			}
+			if !keepStreaming {
+				break
+			}
 		}
 		return
 	}
@@ -166,6 +206,21 @@ func NotFoundResponse() *Response {
 	return NewResponse().SetCode(http.StatusNotFound).SetContent("Not Found")
 }
 
+// DownloadResponse Create a new HTTP Download Response
+func DownloadResponse(filePath string, filename ...string) *Response {
+	r := NewResponse()
+	r.filePath = filePath
+
+	name := filepath.Base(filePath)
+	if len(filename) > 0 {
+		name = filename[0]
+	}
+
+	r.Header.Set("Content-Disposition", "attachment; filename=\""+name+"\"")
+	r.Header.Set("Content-Type", "application/octet-stream")
+	return r
+}
+
 // NotFoundResponse Create a new HTTP Error Response
 func ErrorResponse() *Response {
 	return NewResponse().SetCode(http.StatusInternalServerError).SetContent("Server Error")
@@ -175,5 +230,82 @@ func ErrorResponse() *Response {
 func Redirect(to string) *Response {
 	r := NewResponse().SetCode(http.StatusMovedPermanently)
 	r.Header.Set("Location", to)
+	return r
+}
+
+// SetStream sets a streaming callback for the response.
+func (r *Response) SetStream(streamFunc func(w io.Writer) bool) *Response {
+	r.streamFunc = streamFunc
+	return r
+}
+
+// StreamResponse creates a new streaming HTTP Response.
+func StreamResponse(streamFunc func(w io.Writer) bool) *Response {
+	r := NewResponse()
+	r.SetContentType("text/event-stream")
+	r.Header.Set("Cache-Control", "no-cache")
+	r.Header.Set("Connection", "keep-alive")
+	r.streamFunc = streamFunc
+	return r
+}
+
+// StreamDownload creates a new streaming download response.
+func StreamDownload(streamFunc func(w io.Writer) bool, filename string) *Response {
+	r := NewResponse()
+	r.Header.Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	r.Header.Set("Content-Type", "application/octet-stream")
+	r.streamFunc = streamFunc
+	return r
+}
+
+// NoContent creates a new 204 No Content Response.
+func NoContent(status ...int) *Response {
+	code := http.StatusNoContent
+	if len(status) > 0 {
+		code = status[0]
+	}
+	return NewResponse().SetCode(code).SetContent("")
+}
+
+// Json Create a new HTTP Response with JSON data
+func Json(v interface{}) *Response {
+	c, err := json.Marshal(v)
+	if err != nil {
+		return NewResponse().SetContent("").SetContentType("application/json")
+	}
+	return NewResponse().SetContent(string(c)).SetContentType("application/json")
+}
+
+// Text Create a new HTTP Response with TEXT data
+func Text(s string) *Response {
+	return NewResponse().SetContent(s).SetContentType("text/plain")
+}
+
+// Html Create a new HTTP Response with HTML data
+func Html(s string) *Response {
+	return NewResponse().SetContent(s)
+}
+
+// Download Create a new HTTP Download Response
+func Download(filePath string, filename ...string) *Response {
+	return DownloadResponse(filePath, filename...)
+}
+
+// MakeResponse Create a new HTTP Response by auto detecting content type
+func MakeResponse(v interface{}) *Response {
+	r := NewResponse()
+	if v == nil {
+		return r.SetContent("")
+	}
+
+	content := FormatContent(v)
+	t := reflect.TypeOf(v)
+	if t.Kind() == reflect.Map || t.Kind() == reflect.Slice || t.Kind() == reflect.Struct {
+		r.SetContentType("application/json")
+	} else {
+		r.SetContentType("text/plain")
+	}
+	r.SetContent(content)
+
 	return r
 }

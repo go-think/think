@@ -18,11 +18,17 @@ func (c *CookieHandler) SetResponse(res Response) {
 }
 
 func (c *CookieHandler) Read(id string) string {
+	if c.request == nil {
+		return ""
+	}
 	value, _ := c.request.Cookie(id)
 
 	return value
 }
 
 func (c *CookieHandler) Write(id string, data string) {
+	if c.response == nil {
+		return
+	}
 	c.response.Cookie(id, data)
 }

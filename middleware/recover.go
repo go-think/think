@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"fmt"
-	"net/http/httputil"
 	"runtime"
-	"strings"
 
-	"github.com/go-think/think/context"
+	"github.com/go-think/think/flow"
+	"github.com/go-think/think/contract"
+	"github.com/go-think/think/exception"
+	"github.com/go-think/think/facades"
 )
 
 type RecoverHandler struct {
@@ -21,36 +22,42 @@ func NewRecoverHandler(debug bool) Handler {
 }
 
 // Process Process the request to a router and return the response.
-func (h *RecoverHandler) Process(req *context.Request, next Closure) (result interface{}) {
+func (h *RecoverHandler) Process(req *flow.Request, next Closure) (result interface{}) {
 	defer func() {
 		if err := recover(); err != nil {
+			if facades.App != nil {
+				handler := facades.Container().Make[contract.ExceptionHandler]()
+				if handler != nil {
+					handler.Report(err)
+					result = handler.Render(err)
+					return
+				}
+			}
+
+			// Fallback if ExceptionHandler is not configured
+			if he, ok := err.(*exception.HttpException); ok {
+				response := flow.NewResponse()
+				response.SetCode(he.Code)
+				response.SetContent(he.Message)
+				result = response
+				return
+			}
+			
 			var stacktrace string
 			for i := 1; ; i++ {
 				_, f, l, got := runtime.Caller(i)
 				if !got {
 					break
 				}
-
 				stacktrace += fmt.Sprintf("%s:%d\n", f, l)
 			}
 
-			httpRequest, _ := httputil.DumpRequest(req.Request, false)
-
-			headers := strings.Split(string(httpRequest), "\r\n")
-			for idx, header := range headers {
-				current := strings.Split(header, ":")
-				if len(current) > 0 && current[0] == "Authorization" {
-					headers[idx] = current[0] + ": *"
-				}
-			}
-
-			logMessage := fmt.Sprintf("Recovered at Request: %s\n", strings.Join(headers, "\r\n"))
-			logMessage += fmt.Sprintf("Trace: %s\n", err)
-			logMessage += fmt.Sprintf("\n%s", stacktrace)
-
-			response := context.ErrorResponse()
+			logMessage := fmt.Sprintf("Trace: %s\n\n%s", err, stacktrace)
+			response := flow.ErrorResponse()
 			if h.debug {
 				response.SetContent(logMessage)
+			} else {
+				response.SetContent("Internal Server Error")
 			}
 			result = response
 		}

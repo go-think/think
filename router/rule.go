@@ -1,22 +1,27 @@
 package router
 
 import (
+	"net/http"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/go-think/think/context"
+	"github.com/go-think/think/container"
+	"github.com/go-think/think/facades"
+	"github.com/go-think/think/flow"
 )
 
 // Rule Route rule
 type Rule struct {
-	middlewares    []Middleware
+	name           string
+	middlewares    []interface{}
 	method         []string
 	pattern        string
 	handler        interface{}
 	parameterNames []string
+	wheres         map[string]string
 	Compiled       *Compiled
 	compileOnce    sync.Once
 }
@@ -48,7 +53,7 @@ func (r *Rule) Bind(req Request, path string, treeParams ...[]*parameter) []*par
 	path = "/" + strings.TrimLeft(path, "/")
 	parameters := make([]*parameter, 0)
 
-	// 如果来自 Radix Tree 已经提前提取好的参数
+	// If parameters were already extracted from the Radix Tree
 	if len(treeParams) > 0 && len(treeParams[0]) > 0 {
 		for _, p := range treeParams[0] {
 			parameters = append(parameters, p)
@@ -59,7 +64,7 @@ func (r *Rule) Bind(req Request, path string, treeParams ...[]*parameter) []*par
 		return parameters
 	}
 
-	// 使用预编译正则提取参数
+	// Extract parameters using pre-compiled regex
 	if r.Compiled == nil || r.Compiled.Regexp == nil {
 		return parameters
 	}
@@ -90,7 +95,7 @@ func (r *Rule) Bind(req Request, path string, treeParams ...[]*parameter) []*par
 }
 
 // Middleware Set the middleware attached to the rule.
-func (r *Rule) Middleware(middlewares ...Middleware) *Rule {
+func (r *Rule) Middleware(middlewares ...interface{}) *Rule {
 	for _, m := range middlewares {
 		r.middlewares = append(r.middlewares, m)
 	}
@@ -98,12 +103,12 @@ func (r *Rule) Middleware(middlewares ...Middleware) *Rule {
 }
 
 // GatherRouteMiddleware Get all middleware, including the ones from the controller.
-func (r *Rule) GatherRouteMiddleware() []Middleware {
+func (r *Rule) GatherRouteMiddleware() []interface{} {
 	return r.middlewares
 }
 
 // Run Run the route action and return the response.
-func (r *Rule) Run(request *context.Request, params ...[]*parameter) (result interface{}) {
+func (r *Rule) Run(request *flow.Request, params ...[]*parameter) (result interface{}) {
 	if r == nil || r.handler == nil {
 		return nil
 	}
@@ -111,6 +116,14 @@ func (r *Rule) Run(request *context.Request, params ...[]*parameter) (result int
 	var parsedParams []*parameter
 	if len(params) > 0 {
 		parsedParams = params[0]
+	}
+
+	// Direct execution for http.Handler (e.g. Static files via http.FileServer)
+	if httpHandler, ok := r.handler.(http.Handler); ok {
+		if request != nil && request.ResponseWriter() != nil && request.Request != nil {
+			httpHandler.ServeHTTP(request.ResponseWriter(), request.Request)
+			return flow.HandledResponse()
+		}
 	}
 
 	v := reflect.ValueOf(r.handler)
@@ -143,8 +156,16 @@ func (r *Rule) compile() {
 	r.compileOnce.Do(func() {
 		pat := strings.Replace(r.pattern, "/*", "/.*", -1)
 
-		reg, _ := regexp.Compile(`\{\w+\}`)
-		regex := reg.ReplaceAllString(pat, "([^/]+)")
+		reg := regexp.MustCompile(`\{(\w+)\}`)
+		regex := reg.ReplaceAllStringFunc(pat, func(m string) string {
+			paramName := strings.Trim(m, "{}")
+			if r.wheres != nil {
+				if constraint, ok := r.wheres[paramName]; ok {
+					return "(" + constraint + ")"
+				}
+			}
+			return "([^/]+)"
+		})
 		fullRegex := "^" + regex + "$"
 
 		compiledReg, _ := regexp.Compile(fullRegex)
@@ -154,6 +175,22 @@ func (r *Rule) compile() {
 			Regexp: compiledReg,
 		}
 	})
+}
+
+// ValidateParams checks if given parameters satisfy where constraints
+func (r *Rule) ValidateParams(params []*parameter) bool {
+	if len(r.wheres) == 0 {
+		return true
+	}
+	for _, p := range params {
+		if constraint, ok := r.wheres[p.name]; ok {
+			reg, err := regexp.Compile("^" + constraint + "$")
+			if err == nil && !reg.MatchString(p.value) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (r *Rule) compileParameterNames() []string {
@@ -168,7 +205,7 @@ func (r *Rule) compileParameterNames() []string {
 	return result
 }
 
-func parseParams(value reflect.Value, request *context.Request, parameters []*parameter) []reflect.Value {
+func parseParams(value reflect.Value, request *flow.Request, parameters []*parameter) []reflect.Value {
 	valueType := value.Type()
 	needNum := valueType.NumIn()
 	if needNum < 1 {
@@ -180,30 +217,59 @@ func parseParams(value reflect.Value, request *context.Request, parameters []*pa
 
 	for i := 0; i < needNum; i++ {
 		t := valueType.In(i)
-		k := t.Kind()
 
-		// 检查是否为 *context.Request 或 context.Request
-		if (k == reflect.Ptr && t.Elem().Kind() == reflect.ValueOf(request).Elem().Kind()) ||
-			(k == reflect.ValueOf(request).Elem().Kind()) {
-			if k == reflect.Ptr {
-				in = append(in, reflect.ValueOf(request))
-			} else {
-				in = append(in, reflect.ValueOf(request).Elem())
-			}
+		reqType := reflect.TypeOf(request)
+
+		// Check if it is *flow.Request or flow.Request
+		if t == reqType {
+			in = append(in, reflect.ValueOf(request))
+			continue
+		} else if t == reqType.Elem() {
+			in = append(in, reflect.ValueOf(request).Elem())
 			continue
 		}
 
-		// 路由正则提取的形参转换
+		// Try to autowire dependency from container first
+		var dep interface{}
+		if app := getAppContainer(); app != nil {
+			dep = app.MakeByName(getAbstractName(t))
+		}
+		
+		if dep != nil {
+			in = append(in, reflect.ValueOf(dep))
+			continue
+		}
+
+		// If not in container, and there are unconsumed parameters, and target type is primitive, fetch from route params
 		if paramIdx < len(parameters) {
 			strVal := parameters[paramIdx].value
 			paramIdx++
 			in = append(in, convertParamValue(strVal, t))
-		} else {
-			in = append(in, reflect.Zero(t))
+			continue
 		}
+		
+		in = append(in, reflect.Zero(t))
 	}
 
 	return in
+}
+
+func getAppContainer() *container.Container {
+	if facades.App != nil {
+		return facades.Container()
+	}
+	return nil
+}
+
+func getAbstractName(t reflect.Type) string {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	pkgPath := t.PkgPath()
+	if pkgPath == "" {
+		return t.Name()
+	}
+	return t.Name()
 }
 
 func convertParamValue(str string, targetType reflect.Type) reflect.Value {

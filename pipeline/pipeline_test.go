@@ -5,24 +5,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-think/think/context"
+	"github.com/go-think/think/flow"
 	"github.com/go-think/think/middleware"
 	"github.com/stretchr/testify/assert"
 )
 
 type dummyHandler struct {
-	fn func(req *context.Request, next middleware.Closure) interface{}
+	fn func(req *flow.Request, next middleware.Closure) interface{}
 }
 
-func (d *dummyHandler) Process(req *context.Request, next middleware.Closure) interface{} {
+func (d *dummyHandler) Process(req *flow.Request, next middleware.Closure) interface{} {
 	return d.fn(req, next)
 }
 
 func TestPipelineServeHTTPPointerResponse(t *testing.T) {
 	p := NewPipeline()
 	p.Pipe(&dummyHandler{
-		fn: func(req *context.Request, next middleware.Closure) interface{} {
-			resp := context.NewResponse()
+		fn: func(req *flow.Request, next middleware.Closure) interface{} {
+			resp := flow.NewResponse()
 			resp.SetCode(http.StatusCreated)
 			resp.SetContentType("application/json")
 			resp.SetContent(`{"status":"created"}`)

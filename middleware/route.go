@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/go-think/think/context"
+	"github.com/go-think/think/flow"
 	"github.com/go-think/think/router"
 )
 
@@ -17,12 +17,6 @@ func NewRouteHandler(r *router.Route) Handler {
 }
 
 // Process Process the request to a router and return the response.
-func (h *RouteHandler) Process(request *context.Request, next Closure) interface{} {
-	rule, params, err := h.Route.Dispatch(request)
-
-	if err != nil {
-		return context.NotFoundResponse()
-	}
-
-	return router.RunRoute(request, rule, params)
+func (h *RouteHandler) Process(request *flow.Request, next Closure) interface{} {
+	return h.Route.Dispatch(request)
 }

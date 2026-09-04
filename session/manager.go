@@ -87,7 +87,7 @@ func (m *Manager) parseStoreHandler() Handler {
 		handler, ok := customHandlers[m.Config.Driver]
 		customHandlersMu.RUnlock()
 		if !ok {
-			// 降级为默认 file driver，防止直接 panic
+			// Fallback to default file driver to prevent direct panic
 			storeHandler = &FileHandler{
 				Path:     m.Config.Files,
 				Lifetime: m.Config.Lifetime,

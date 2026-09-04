@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-	<strong>Think is a lightweight MVC framework written in Go (Golang).</strong>
+	<strong>Think is an expressive, elegant, and modular Web Framework for Go.</strong>
 </p>
 <p align="center">
 	<a href="https://github.com/go-think/think/actions/workflows/build.yml">
@@ -31,487 +31,575 @@
 	</a>
 </p>
 
+## Requirements
+
+- Go 1.27 or higher
 
 ## Installation
 
-The only requirement is the [Go Programming Language](https://golang.org/dl/)
-
-```
+```bash
 go get -u github.com/go-think/think
 ```
 
-## Quick start
+## Quick Start
+
+Think provides a fluent, modular builder approach to bootstrap and configure your application:
 
 ```go
 package main
 
 import (
-    "fmt"
+	"fmt"
 
-	"github.com/go-think/think"	
-	"github.com/go-think/think/think"
+	"github.com/go-think/think"
+	"github.com/go-think/think/flow"
+	"github.com/go-think/think/router"
 )
 
 func main() {
-	th := thinkgo.New()
-	th.RegisterRoute(func(route *think.Route) {
+	app := think.Configure().
+		WithRouting(think.Routing{
+			Web: func(r *router.Route) {
+				r.Get("/", func() *flow.Response {
+					return flow.Text("Hello Think!")
+				})
 
-		route.Get("/", func(req *think.Req) *think.Res {
-			return think.Text("Hello ThinkGo !")
-		})
+				r.Get("/ping", func() *flow.Response {
+					return flow.Json(map[string]string{
+						"message": "pong",
+					})
+				})
 
-		route.Get("/ping", func(req *think.Req) *think.Res {
-			return think.Json(map[string]string{
-				"message": "pong",
-		    })
-		})
+				// Route parameters & dependency injection
+				r.Get("/user/{name}", func(req *flow.Request, name string) *flow.Response {
+					return flow.Text(fmt.Sprintf("Hello %s!", name))
+				})
+			},
+			Health: "/up",
+		}).
+		Create()
 
-		// Dependency injection
-		route.Get("/user/{name}", func(req *think.Req, name string) *think.Res {
-			return think.Text(fmt.Sprintf("Hello %s !", name))
-		})
-	})
-	// listen and serve on 0.0.0.0:9011
-	th.Run()
+	// Listen and serve on 0.0.0.0:9011
+	app.Run(":9011")
 }
 ```
+
+Or you can use the classic instantiation style:
+
+```go
+package main
+
+import (
+	"github.com/go-think/think"
+	"github.com/go-think/think/flow"
+	"github.com/go-think/think/router"
+)
+
+func main() {
+	app := think.New()
+	app.RegisterRoute(func(r *router.Route) {
+		r.Get("/", func() *flow.Response {
+			return flow.Text("Hello Think!")
+		})
+	})
+	app.Run(":9011")
+}
+```
+
+---
 
 ## Features
 
 - [Routing](#routing)
+  - [Basic Routing](#basic-routing)
+  - [Route Verbs](#route-verbs)
+  - [Route Parameters](#route-parameters)
+  - [Parameter Regex Constraints](#parameter-regex-constraints)
+  - [Route Prefixes & Groups](#route-prefixes--groups)
+  - [Named Routes & URL Generation](#named-routes--url-generation)
+  - [Signed URLs](#signed-urls)
 - [Middleware](#middleware)
-- [Controller](#controller)
-- [Request](#http-request)
-- [Response](#http-response)
-- [View](#view)
+  - [Writing Middleware](#writing-middleware)
+  - [Built-in Middlewares](#built-in-middlewares)
+- [HTTP Request](#http-request)
+  - [Input & Values](#input--values)
+  - [Type Safe Conversions](#type-safe-conversions)
+  - [Path & Inspection](#path--inspection)
+  - [Client Details & Fingerprint](#client-details--fingerprint)
+- [HTTP Response](#http-response)
+  - [Factory Methods](#factory-methods)
+  - [Streaming & Downloads](#streaming--downloads)
+  - [Custom Headers & Status Codes](#custom-headers--status-codes)
+- [IoC Container & Facades](#ioc-container--facades)
+- [Configuration & Environment](#configuration--environment)
+- [Events](#events)
+- [Exceptions](#exceptions)
 - [HTTP Session](#http-session)
+- [View](#view)
 - [Logging](#logging)
-- [Cache](#cache)
-- [ORM](#orm)
+- [License](#license)
+
+---
 
 ## Routing
 
 #### Basic Routing
 
-The most basic routes accept a URI and a Closure, providing a very simple and expressive method of defining routes:
+The most basic routes accept a URI and a Closure callback:
 
 ```go
-think.RegisterRoute(func(route *router.Route) {
-	route.Get("/foo", func(req *context.Request) *context.Response {
-		return thinkgo.Text("Hello ThinkGo !")
+r.Get("/foo", func() *flow.Response {
+	return flow.Text("Hello Think!")
+})
+```
+
+Handlers can return `*flow.Response`, `string`, `map`, `struct`, or any serializable type. Think will automatically format the output and set the appropriate `Content-Type`.
+
+#### Route Verbs
+
+The router allows you to register routes for any HTTP verb:
+
+```go
+r.Get("/users", getUsers)
+r.Post("/users", createUser)
+r.Put("/users/{id}", updateUser)
+r.Delete("/users/{id}", deleteUser)
+r.Patch("/users/{id}", patchUser)
+r.Options("/users", optionsHandler)
+
+// Match any HTTP verb
+r.Any("/any", anyHandler)
+```
+
+#### Route Parameters
+
+Capture URI segments directly into handler parameters:
+
+```go
+r.Get("/user/{id}", func(req *flow.Request, id string) *flow.Response {
+	return flow.Text(fmt.Sprintf("User ID: %s", id))
+})
+
+r.Get("/posts/{post}/comments/{comment}", func(req *flow.Request, post, comment string) *flow.Response {
+	return flow.Json(map[string]string{
+		"post_id":    post,
+		"comment_id": comment,
 	})
 })
 ```
 
-#### Available Router Methods
+#### Parameter Regex Constraints
 
-The router allows you to register routes that respond to any HTTP verb:
+Constrain the format of your route parameters using `Where` methods:
 
 ```go
-route.Get("/someGet", getting)
-route.Post("/somePost", posting)
-route.Put("/somePut", putting)
-route.Delete("/someDelete", deleting)
-route.Patch("/somePatch", patching)
-route.Options("/someOptions", options)
+// Match only digits
+r.Get("/user/{id}", getUser).WhereNumber("id")
+
+// Match only alphabetic characters
+r.Get("/user/{name}", getUser).WhereAlpha("name")
+
+// Match against allowed enum values
+r.Get("/order/{status}", getOrder).WhereIn("status", []string{"pending", "paid", "shipped"})
+
+// Custom regex pattern
+r.Get("/user/{code}", getUser).Where("code", "^[A-Z]{3}-[0-9]{4}$")
 ```
 
-Sometimes you may need to register a route that responds to multiple HTTP verbs. You may even register a route that responds to all HTTP verbs using the `Any` method:
+#### Route Prefixes & Groups
+
+Share common middleware or path prefixes across a collection of routes:
 
 ```go
-route.Any("/someAny", any)
-```
+import "github.com/go-think/think/contract"
 
-#### Parameters in path
+r.Prefix("/admin").Group(func(admin contract.Router) {
+	admin.Get("/dashboard", adminDashboard)
 
-Of course, sometimes you will need to capture segments of the URI within your route. For example, you may need to capture a user's ID from the URL. You may do so by defining route parameters:
-
-```go
-route.Get("/user/{id}", func(req *context.Request, id string) *context.Response {
-	return thinkgo.Text(fmt.Sprintf("User %s", id))
-})
-```
-
-You may define as many route parameters as required by your route:
-
-```go
-route.Get("/posts/{post}/comments/{comment}", func(req *context.Request, postId, commentId string) *context.Response {
-	//
-})
-```
-
-#### Route Prefixes
-
-The prefix method may be used to prefix each route in the group with a given URI. For example, you may want to prefix all route URIs within the group with `admin`:
-
-```go
-route.Prefix("/admin").Group(func(group *router.Route) {
-	group.Prefix("user").Group(func(group *router.Route) {
-	    // ... 	
+	admin.Prefix("/users").Group(func(users contract.Router) {
+		users.Get("", listAdminUsers)
+		users.Get("/{id}", getAdminUser)
 	})
-	group.Prefix("posts").Group(func(group *router.Route) {
-		// ... 	
-    })
 })
 ```
 
-#### Route Groups
+#### Named Routes & URL Generation
 
-Route groups allow you to share route attributes, such as middleware or prefix, across a large number of routes without needing to define those attributes on each individual route.
+Assign names to routes to conveniently generate URLs:
 
 ```go
-route.Prefix("/admin").Group(func(group *router.Route) {
-	group.Prefix("user").Group(func(group *router.Route) {
-		group.Get("", func(request *context.Request) *context.Response {
-			return thinkgo.Text("admin user !")
-		}).Middleware(func(request *context.Request, next router.Closure) interface{} {
-			if _, err := request.Input("id"); err != nil {
-				return thinkgo.Text("Invalid parameters")
-			}
-			return next(request)
-		})
-		group.Get("edit", func(request *context.Request) *context.Response {
-			return thinkgo.Text("admin user edit !")
-		})
-	}).Middleware(func(request *context.Request, next router.Closure) interface{} {
-		if _, err := request.Input("user"); err != nil {
-			return thinkgo.Text("Invalid parameters")
-		}
-		return next(request)
-	})
-}).Middleware(func(request *context.Request, next router.Closure) interface{} {
-	if _, err := request.Input("token"); err != nil {
-		return thinkgo.Text("Invalid parameters")
-	}
-	return next(request)
-})
+r.Get("/user/{id}/profile", showProfile).Name("profile")
+
+// Generate URL: "/user/42/profile"
+url := r.Url("profile", map[string]string{"id": "42"})
 ```
+
+#### Signed URLs
+
+Generate tamper-proof URLs protected with a cryptographic HMAC signature:
+
+```go
+// Create a signed URL valid for 30 minutes
+signedUrl := r.SignedUrl("unsubscribe", 30*time.Minute, map[string]string{"user": "123"})
+
+// Validate signature inside handler or middleware
+if !r.HasValidSignature(req) {
+	return flow.NewResponse().SetCode(403).SetContent("Invalid or expired signature")
+}
+```
+
+---
 
 ## Middleware
 
-Middleware provide a convenient mechanism for filtering HTTP requests entering your application. You only need to implement the `Middleware` interface.
+Middleware provide a convenient mechanism for inspecting and filtering HTTP requests entering your application.
+
+#### Writing Middleware
+
+Implement a standard middleware closure:
 
 ```go
-route.Get("/foo", func(request *context.Request) *context.Response {
-	return thinkgo.Text("Hello ThinkGo !")
-}).Middleware(func(request *context.Request, next router.Closure) interface{} {
-	if _, err := request.Input("name"); err != nil {
-		return thinkgo.Text("Invalid parameters")
+func AuthMiddleware(req *flow.Request, next middleware.Closure) interface{} {
+	token := req.Header("Authorization")
+	if token == "" {
+		return flow.NewResponse().SetCode(401).SetContent("Unauthorized")
 	}
-	return next(request)
-})
+
+	// Proceed to next middleware or route handler
+	return next(req)
+}
+
+// Attach to specific route
+r.Get("/secret", secretHandler).Middleware(AuthMiddleware)
 ```
 
-#### Before Middleware
-
-Whether a middleware runs before or after a request depends on the middleware itself. For example, the following middleware would perform some task `before` the request is handled by the application:
+Or implement the `middleware.Handler` interface:
 
 ```go
-func(request *context.Request, next router.Closure) interface{} {
-	
-	// Perform action	
-	// ...
-	
-	return next(request)
+type MyMiddleware struct{}
+
+func (m *MyMiddleware) Process(req *flow.Request, next middleware.Closure) interface{} {
+	// Perform action before handler
+	res := next(req)
+	// Perform action after handler
+	return res
 }
 ```
 
-#### After  Middleware
+#### Built-in Middlewares
 
-However, this middleware would perform its task `after` the request is handled by the application:
-
-```go
-func(request *context.Request, next router.Closure) interface{} {
-	
-	response := next(request)
-	
-	// Perform action	
-	// ...
-	
-	return response
-}
-```
-
-## Controller
-
-#### Basic Controller
-
-Below is an example of a basic controller class.
+Think includes essential built-in middlewares configurable fluently via `ApplicationBuilder`:
 
 ```go
-package controller
+app := think.Configure().
+	WithMiddleware(func(m *think.MiddlewareConfig) {
+		// Enable standard CORS handling
+		m.Cors()
 
-import (
-	"github.com/go-think/think"
-	"github.com/go-think/think/context"
-)
+		// Automatically trim incoming request strings
+		m.TrimStrings("password", "password_confirmation")
 
-func Index(req *context.Request) *context.Response {
-	return thinkgo.Text("Hello ThinkGo !")
-}
-
+		// Validate signed URL signatures
+		m.ValidateSignatures()
+	}).
+	Create()
 ```
 
-You can define a route to this controller like so:
-
-```go
-route.Get("/", controller.Index)
-```
-
-#### Resource Controller
-
-This feature will be supported in a future release.
+---
 
 ## HTTP Request
 
-#### Accessing The Request
+Access incoming request data via `*flow.Request`:
 
-To obtain an instance of the current HTTP request via dependency injection
+#### Input & Values
 
 ```go
-func Handler(req *context.Request) *context.Response {
-	name := req.Input("name")
+func Handler(req *flow.Request) *flow.Response {
+	// Retrieve from any source (query, json body, post form)
+	name, _ := req.Input("name")
+
+	// Query parameters
+	page, _ := req.Query("page")
+
+	// POST / JSON body parameters
+	email, _ := req.Post("email")
+
+	// All inputs as a map
+	all := req.All()
+
+	return flow.Json(all)
 }
 ```
 
-#### Dependency Injection & Route Parameters
-
-If your controller method is also expecting input from a route parameter you should list your route parameters after the request dependencies. For example, you can access your route parameter `name` like so:
+#### Type Safe Conversions
 
 ```go
-route.Put("/user/{name}", func(req *context.Request, name string) *context.Response {
-	//
-})
+// Returns boolean or default value
+isAdmin := req.Boolean("is_admin", false)
+
+// Returns integer or default value
+page := req.Integer("page", 1)
+
+// Returns float64 or default value
+price := req.Float("price", 0.0)
 ```
 
-#### Request Path & Method
-
-The `path` method returns the request's path information. So, if the incoming request is targeted at `http://domain.com/foo/bar`, the `path` method will return `foo/bar`:
+#### Path & Inspection
 
 ```go
-uri := req.GetPath()
+// Get request path (e.g. "/users/1")
+path := req.Path()
+
+// Match path patterns with wildcards
+if req.Is("admin/*") {
+	// Matches /admin/dashboard, /admin/users, etc.
+}
+
+// Match current route name
+if req.RouteIs("api.*") {
+	// ...
+}
 ```
 
-The `method` method will return the HTTP verb for the request. 
+#### Client Details & Fingerprint
 
 ```go
-method := req.GetMethod();
+// Client IP address (with X-Forwarded-For support)
+ip := req.ClientIP()
+
+// User-Agent header
+ua := req.UserAgent()
+
+// SHA-256 fingerprint of the request
+fingerprint := req.Fingerprint()
 ```
 
-#### Retrieving Cookies From Requests
-
-```go
-name, _ := request.Cookie("name")
-```
+---
 
 ## HTTP Response
 
-an HTTP Response Must implement the `*context.Response` interface
+All response helpers are centralized in the `flow` package.
 
-#### Creating Responses
-
-a simple strings or json Response:
+#### Factory Methods
 
 ```go
-thinkgo.Text("Hello ThinkGo !")
+// JSON response (application/json)
+flow.Json(map[string]interface{}{"status": "ok", "code": 200})
 
-thinkgo.Json(map[string]string{
-				"message": "pong",
-			})
+// Plain text response (text/plain)
+flow.Text("Hello World")
+
+// HTML response (text/html)
+flow.Html("<h1>Welcome</h1>")
+
+// 204 No Content response
+flow.NoContent()
+
+// Dynamic auto-detecting response
+flow.MakeResponse(data)
 ```
 
-#### Attaching Cookies To Responses
+#### Streaming & Downloads
 
 ```go
-response.Cookie("name", "alice")
-```
+// File download attachment
+flow.Download("/path/to/report.pdf", "annual_report.pdf")
 
-#### Redirects
-
-```go
-route.Get("/redirect", func(request *context.Request) *context.Response {
-	return context.Redirect("https://www.google.com")
+// Stream response / SSE (Server-Sent Events)
+flow.StreamResponse(func(w io.Writer) bool {
+	fmt.Fprintf(w, "data: %s\n\n", time.Now().Format(time.RFC3339))
+	time.Sleep(1 * time.Second)
+	return true // return false to stop streaming
 })
+
+// Stream download
+flow.StreamDownload(func(w io.Writer) bool {
+	w.Write([]byte("chunked-data..."))
+	return false
+}, "large_file.zip")
 ```
 
-## View
-
-Specify the `views` directory before running the app:
+#### Custom Headers & Status Codes
 
 ```go
-view.ParseGlob("/path/to/views/*")
+res := flow.NewResponse().
+	SetCode(201).
+	SetContentType("application/json").
+	SetContent(`{"created": true}`)
+
+res.Header.Set("X-Powered-By", "Think")
+res.Cookie("session_id", "xyz123")
 ```
 
-views are stored in the `views` directory, A simple view might look something like this:
+---
 
-`views/layout.html` like this:
+## IoC Container & Facades
 
-```html
-{{ define "layout" }}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<title>{{ .Title }}</title>
-</head>
-<body>
-	{{ template "content" .}}
-</body>
-</html>
-{{ end }}
-```
-
-`views/tpl.html` like this:
-
-```html
-{{ define "content" }}
-<h2>{{ .Message }}</h2>
-{{ end }}
-{{ template "layout" . }}
-```
-
-we may return it using the `Render` function like so:
+Think features a modern IoC Container supporting Go generics:
 
 ```go
-route.Get("/tpl", func(request *context.Request) *context.Response {
-	data := map[string]interface{}{"Title": "ThinkGo", "Message": "Hello ThinkGo !"}
-	return view.Render("tpl.html", data)
+// Register singleton
+app.Singleton[MyService](func() MyService {
+	return NewMyService()
 })
+
+// Resolve instance with type safety
+service := app.Make[MyService]()
 ```
+
+#### Global Facades
+
+Access core components conveniently from anywhere via `facades`:
+
+```go
+import "github.com/go-think/think/facades"
+
+// Router facade
+facades.Route().Get("/status", statusHandler)
+
+// Config facade
+appName := facades.Config().GetString("app.name")
+
+// Logger facade
+facades.Log().Info("Service started")
+
+// Event dispatcher facade
+facades.Event().Dispatch("order.created", order)
+
+// Container facade
+db := facades.Container().Make[Database]()
+```
+
+---
+
+## Configuration & Environment
+
+Think automatically loads environment files on startup with support for `.env`, `.env.local`, and environment-specific files (`.env.production`, `.env.testing`).
+
+#### Environment Detection
+
+Pass `--env=testing` via command line arguments or specify the `APP_ENV` environment variable:
+
+```bash
+APP_ENV=production go run main.go
+```
+
+#### Configuration Repository
+
+```go
+cfg := facades.Config()
+
+// Read values
+name := cfg.GetString("app.name")
+port := cfg.GetInt("app.port", 9011)
+debug := cfg.GetBool("app.debug", false)
+
+// Mutate configuration
+cfg.Set("app.timezone", "Asia/Shanghai")
+cfg.Push("app.providers", "custom_provider")
+```
+
+---
+
+## Events
+
+Decouple your application logic using the event dispatcher:
+
+```go
+// Register listener
+facades.Event().Listen("user.registered", func(payload interface{}) {
+	user := payload.(*User)
+	sendWelcomeEmail(user)
+})
+
+// Dispatch event
+facades.Event().Dispatch("user.registered", user)
+
+// Dispatch until first non-nil response
+result := facades.Event().Until("order.validating", order)
+```
+
+---
+
+## Exceptions
+
+Configure centralized exception reporting and rendering:
+
+```go
+app := think.Configure().
+	WithExceptions(func(e *think.ExceptionsConfig) {
+		// Ignore specific exception types from error reporting
+		e.DontReport(NotFoundError{})
+
+		// Custom reporting callback
+		e.Report(func(err interface{}) bool {
+			facades.Log().Error(fmt.Sprintf("Caught error: %v", err))
+			return true
+		})
+	}).
+	Create()
+```
+
+---
 
 ## HTTP Session
 
-When the app starts, you need to register the session handler.
+Manage session data with multiple storage drivers:
 
 ```go
-think.RegisterHandler(app.NewSessionHandler)
+// Retrieve session data
+user := req.Session().Get("user")
+
+// Store session data
+req.Session().Set("user", "alice")
+
+// Flash data (only available in subsequent request)
+req.Session().Flash("message", "Task created successfully")
+
+// Reflash all flash data for another request
+req.Session().Reflash()
+
+// Invalidate & regenerate session
+req.Session().Invalidate()
 ```
 
-`ThinkGo` ships with several great drivers out of the box:
+---
 
-- cookie - sessions are stored in cookies
-- file - sessions are stored in files.
+## View
 
-#### Using The Session
-
-retrieving Data like this:
+Specify your templates directory and render HTML views:
 
 ```go
-request.Session().Get("user")
-```
+import "github.com/go-think/think/view"
 
-storing Data like this:
+// Parse views directory
+view.ParseGlob("views/*")
 
-```go
-request.Session().Set("user", "alice")
-```
-
-#### Adding Custom Session Drivers
-
-Your custom session driver should implement the `Handler`. 
-
-```go
-type Handler interface {
-	Read(id string) string
-	Write(id string, data string)
-}
-```
-
-Once your driver has been implemented, you are ready to register it:
-
-```go
-import "github.com/go-think/think/session"
-
-session.Extend("my_session", MySessionHandler)
-```
-
-## Logging
-
-The logger provides the eight logging levels defined in [RFC 5424]( https://tools.ietf.org/html/rfc5424 ): **emergency**, **alert**, **critical**, **error**, **warning**, **notice**, **info** and **debug**.
-
-#### Basic Usage
-
-```go
-import "github.com/go-think/log"
-
-log.Debug("log with Debug")
-log.Info("log with Info")
-log.Notice("log with Notice")
-log.Warn("log with Warn")
-log.Error("log with Error")
-log.Crit("log with Crit")
-log.Alert("log with Alert")
-log.Emerg("log with Emerg")
-```
-
-#### Log Storage
-
-Out of the box, ThinkGo supports writing log information to `daily` files, the `console`.
-
-For example, if you wish to use `daily` log files, you can do this: 
-
-```go
-import (
-	"github.com/go-think/log"
-	"github.com/go-think/log/handler"
-	"github.com/go-think/log/record"
-)
-
-fh := handler.NewFileHandler("path/to/think.log", record.INFO)
-
-log.GetLogger().PushHandler(fh)
-```
-
-## Cache
-
-ThinkGo Cache Currently supports redis, memory, and can customize the store adapter.
-
-#### Basic Usage
-
-```go
-import (
-	"github.com/go-think/cache"
-	"time"
-)
-
-
-var foo string 
-
-// Create a cache with memory store
-c, _ := cache.Cache(cache.NewMemoryStore("think go"))
-
-// Set the value
-c.Put("foo", "think go", 10 * time.Minute)
-
-// Get the string associated with the key "foo" from the cache
-c.Get("foo", &foo)
-
-```
-
-#### Retrieve & Store
-
-Sometimes you may wish to retrieve an item from the cache, but also store a default value if the requested item doesn't exist. For example, you may wish to retrieve all users from the cache or, if they don't exist, retrieve them from the callback and add them to the cache. You may do this using the `Remember` method:
-
-```go
-var foo int
-
-cache.Remember("foo", &a, 1*time.Minute, func() interface{} {
-	return "thinkgo"
+// Render view inside handler (returns template.HTML, automatically handled by Think)
+r.Get("/profile", func(req *flow.Request) interface{} {
+	return view.Render("profile.html", map[string]interface{}{
+		"Title": "Profile Page",
+		"User":  "Alice",
+	})
 })
 ```
 
-refer to [ThinkGo Cache]( https://github.com/go-think/think/tree/master/cache )
+---
 
-## ORM
+## Logging
 
-refer to [ThinkORM]( https://github.com/go-think/think )
+Think provides standard RFC 5424 logging levels:
+
+```go
+facades.Log().Debug("Debug message")
+facades.Log().Info("Information message")
+facades.Log().Notice("Notice message")
+facades.Log().Warn("Warning message")
+facades.Log().Error("Error message")
+```
+
+---
 
 ## License
 
-This project is licensed under the [Apache 2.0 license](LICENSE).
-
-## Contact
-
-If you have any issues or feature requests, please contact us. PR is welcomed.
-- https://github.com/go-think/think/issues
-- leeqvip@gmail.com
+This project is open-sourced software licensed under the [Apache 2.0 license](LICENSE).

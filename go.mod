@@ -1,10 +1,11 @@
 module github.com/go-think/think
 
-go 1.23.0
+go 1.27
 
 require (
 	github.com/go-think/log v1.1.0
 	github.com/gomodule/redigo v1.8.8
+	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.7.0
 )
 
