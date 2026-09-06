@@ -1,6 +1,9 @@
 package console
 
 import (
+	"fmt"
+
+	"github.com/go-think/flow"
 	"github.com/go-think/think/container"
 	"github.com/go-think/think/contract"
 )
@@ -36,6 +39,14 @@ func (k *Kernel) Bootstrap() {
 // Handle handles an incoming console command and returns the exit status code.
 func (k *Kernel) Handle(args ...string) int {
 	k.Bootstrap()
+
+	if len(args) > 0 && args[0] == "route:list" {
+		if r := k.app.Make[flow.Router](); r != nil {
+			fmt.Println(string(r.Dump()))
+			return 0
+		}
+	}
+
 	return 0
 }
 

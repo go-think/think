@@ -34,8 +34,23 @@ func (p *RoutingServiceProvider) Register(app *container.Container) {
 		)
 	})
 
+	generator.SetRequestProvider(func() *flow.Request { return r.CurrentRequest() })
+
+	// Route lifecycle events flow through the application event dispatcher.
+	r.OnRouting(func(req *flow.Request) {
+		if dispatcher := app.Make[contract.EventDispatcher](); dispatcher != nil {
+			dispatcher.Dispatch("flow.routing", req)
+		}
+	})
+	r.OnRouteMatched(func(route *flow.Route, req *flow.Request) {
+		if dispatcher := app.Make[contract.EventDispatcher](); dispatcher != nil {
+			dispatcher.Dispatch("flow.route.matched", route)
+		}
+	})
+
 	app.Instance[flow.Router](r)
 	app.Instance[*flow.UrlGenerator](generator)
+	app.Instance[*flow.Redirector](flow.NewRedirector(generator).SetRequestProvider(func() *flow.Request { return r.CurrentRequest() }))
 	app.Alias[flow.Router]("router")
 }
 
