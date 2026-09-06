@@ -10,6 +10,8 @@ type Config interface {
 	GetInt(key string, defaultValue ...int) int
 	// GetBool retrieves a configuration value as a boolean.
 	GetBool(key string, defaultValue ...bool) bool
+	// GetStringSlice retrieves a configuration value as a []string.
+	GetStringSlice(key string, defaultValue ...[]string) []string
 	// Set sets a configuration value.
 	Set(key string, value interface{})
 	// SetStruct registers a struct or pointer to struct under a prefix and recursively maps its fields.

@@ -159,6 +159,28 @@ func (r *Repository) GetBool(key string, defaultValue ...bool) bool {
 	}
 }
 
+// GetStringSlice retrieves a configuration value as a []string.
+// Accepts []string and []interface{} (string elements) values.
+func (r *Repository) GetStringSlice(key string, defaultValue ...[]string) []string {
+	val := r.Get(key)
+	switch v := val.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return nil
+}
+
 // Has checks if a configuration key exists.
 func (r *Repository) Has(key string) bool {
 	return r.Get(key) != nil

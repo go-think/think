@@ -13,6 +13,7 @@ type Handler struct {
 	customReport func(err interface{}) bool
 	customRender func(err interface{}) interface{}
 	dontReport   []reflect.Type
+	debug        func() bool
 }
 
 func NewHandler(logger contract.Logger) contract.ExceptionHandler {
@@ -20,6 +21,12 @@ func NewHandler(logger contract.Logger) contract.ExceptionHandler {
 		logger:     logger,
 		dontReport: make([]reflect.Type, 0),
 	}
+}
+
+// SetDebugResolver injects the debug flag lookup (typically app.IsDebug).
+// When unset, rendering falls back to the production-safe behavior.
+func (h *Handler) SetDebugResolver(fn func() bool) {
+	h.debug = fn
 }
 
 // DontReport registers exception types that should not be reported.
@@ -82,11 +89,19 @@ func (h *Handler) Render(err interface{}) interface{} {
 
 	resp := flow.NewResponse()
 	if e, ok := err.(*HttpException); ok {
+		// HTTP exceptions carry user-facing messages by design.
 		resp.SetCode(e.Code)
 		resp.SetContent(e.Message)
 		return resp
 	}
+
 	resp.SetCode(500)
-	resp.SetContent(fmt.Sprintf("Internal Server Error: %v", err))
+	if h.debug != nil && h.debug() {
+		// Detailed content is for debug environments only; the full error is
+		// already reported to the log by Report().
+		resp.SetContent(fmt.Sprintf("Internal Server Error: %v", err))
+		return resp
+	}
+	resp.SetContent("Internal Server Error")
 	return resp
 }

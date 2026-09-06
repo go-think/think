@@ -7,6 +7,7 @@ import (
 	"github.com/go-think/think/exception"
 	thinkHttp "github.com/go-think/think/http"
 
+	"github.com/go-think/think/container"
 	"github.com/go-think/think/support"
 	"github.com/go-think/think/support/env"
 )
@@ -22,6 +23,7 @@ type Routing struct {
 // MiddlewareConfig provides fluent middleware configuration.
 type MiddlewareConfig struct {
 	kernel contract.HttpKernel
+	app    *container.Container
 }
 
 // Use adds one or more global middlewares to the application pipeline.
@@ -59,8 +61,16 @@ func (m *MiddlewareConfig) TrimStrings(except ...string) *MiddlewareConfig {
 }
 
 // ValidateSignatures registers the URL signature validation middleware.
+// The middleware is backed by the application's UrlGenerator (lazy app.key
+// resolution + previous_keys rotation). Note: as a global middleware it
+// validates every request; prefer a route middleware alias for selective use.
 func (m *MiddlewareConfig) ValidateSignatures() *MiddlewareConfig {
-	return m.Use(flow.NewValidateSignatureMiddleware())
+	if m.kernel != nil && m.app != nil {
+		if ug := m.app.Make[*flow.UrlGenerator](); ug != nil {
+			m.kernel.AddGlobalMiddleware(flow.NewValidateSignatureMiddleware(ug))
+		}
+	}
+	return m
 }
 
 // ExceptionsConfig provides custom exception reporting and rendering callbacks.
@@ -207,7 +217,7 @@ func (b *ApplicationBuilder) WithRouting(routing Routing) *ApplicationBuilder {
 		if prefix == "/" || prefix == "none" {
 			routing.Api(r)
 		} else {
-			r.Prefix(prefix).Group(func(group flow.Router) {
+			r.Group(flow.GroupAttributes{Prefix: prefix}, func(group flow.Router) {
 				routing.Api(group)
 			})
 		}
@@ -240,6 +250,7 @@ func (b *ApplicationBuilder) WithMiddleware(callback func(m *MiddlewareConfig)) 
 
 	config := &MiddlewareConfig{
 		kernel: kernel,
+		app:    b.app.Container,
 	}
 
 	callback(config)
@@ -253,7 +264,12 @@ func (b *ApplicationBuilder) WithExceptions(callbacks ...func(e *ExceptionsConfi
 	if b.app.Make[contract.ExceptionHandler]() == nil {
 		b.app.Singleton[contract.ExceptionHandler](func() contract.ExceptionHandler {
 			logger := b.app.Make[contract.Logger]()
-			return exception.NewHandler(logger)
+			handler := exception.NewHandler(logger)
+			// Detailed error rendering must follow app.debug (production returns generic 500s).
+			if h, ok := handler.(*exception.Handler); ok {
+				h.SetDebugResolver(b.app.IsDebug)
+			}
+			return handler
 		})
 	}
 

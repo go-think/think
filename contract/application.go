@@ -1,7 +1,12 @@
 package contract
 
+import "github.com/go-think/think/container"
+
 // Application is the contract for the Think application.
 type Application interface {
+	// GetContainer returns the underlying IoC container for service resolution.
+	GetContainer() *container.Container
+
 	// Environment returns true if the current environment matches any of the given environments.
 	Environment(envs ...string) bool
 

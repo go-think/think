@@ -20,15 +20,22 @@ func (p *RoutingServiceProvider) Register(app *container.Container) {
 	opts := []flow.Option{
 		flow.WithParameterResolver(p.parameterResolver(app)),
 	}
-	if cfg := app.Make[contract.Config](); cfg != nil {
-		if key := cfg.GetString("app.key"); key != "" {
-			opts = append(opts, flow.WithSignatureKey(key))
-		}
-	}
 
 	r := flow.New(opts...)
 
+	generator := flow.NewUrlGenerator(r).SetKeyResolver(func() []string {
+		cfg := app.Make[contract.Config]()
+		if cfg == nil {
+			return nil
+		}
+		return append(
+			[]string{cfg.GetString("app.key")},
+			cfg.GetStringSlice("app.previous_keys")...,
+		)
+	})
+
 	app.Instance[flow.Router](r)
+	app.Instance[*flow.UrlGenerator](generator)
 	app.Alias[flow.Router]("router")
 }
 
@@ -42,10 +49,21 @@ func (p *RoutingServiceProvider) parameterResolver(app *container.Container) flo
 	})
 }
 
-// Boot boots the provider and registers all route collections.
+// Boot compiles route rules and validates signing configuration.
+// The key itself is resolved lazily by the UrlGenerator's key resolver
+// (registered in Register); an unconfigured key leaves signing disabled —
+// the generator fails closed.
 func (p *RoutingServiceProvider) Boot(app *container.Container) {
 	r := app.Make[flow.Router]()
-	if r != nil {
-		r.Register()
+	if r == nil {
+		return
 	}
+
+	if cfg := app.Make[contract.Config](); cfg != nil && cfg.GetString("app.key") == "" {
+		if logger := app.Make[contract.Logger](); logger != nil {
+			logger.Error("app.key is not configured: signed URLs are disabled and signature validation always fails. Set APP_KEY / app.key before using signed URLs.")
+		}
+	}
+
+	r.Register()
 }
