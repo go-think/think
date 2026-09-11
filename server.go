@@ -53,7 +53,7 @@ func (a *Application) ConsoleKernel() contract.ConsoleKernel {
 	}
 
 	// Auto-bind default Console Kernel if not yet registered
-	kernel := console.NewKernel(a.Container)
+	kernel := console.NewKernel(a.Container, a.routeDump())
 	a.Instance[contract.ConsoleKernel](kernel)
 	return kernel
 }

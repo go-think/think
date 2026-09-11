@@ -2,6 +2,8 @@ package think
 
 import (
 	"net/http"
+
+	"github.com/go-think/flow"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,6 +184,19 @@ func (a *Application) bootstrapConfiguration() {
 	// 3. Set default application timezone from config
 	if tz := repository.GetString("app.timezone"); tz != "" {
 		a.SetTimezone(tz)
+	}
+}
+
+// routeDump provides the console route:list command with the route table.
+func (a *Application) routeDump() func() (string, bool) {
+	return func() (string, bool) {
+		router := a.Make[flow.Router]()
+		if router == nil {
+			return "", false
+		}
+		router.Register()
+		dump := string(router.Dump())
+		return dump, dump != ""
 	}
 }
 

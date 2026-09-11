@@ -154,7 +154,7 @@ func (b *ApplicationBuilder) WithKernels() *ApplicationBuilder {
 
 	// 2. Register Console Kernel
 	if b.app.Make[contract.ConsoleKernel]() == nil {
-		consoleKernel := console.NewKernel(b.app.Container)
+		consoleKernel := console.NewKernel(b.app.Container, b.app.routeDump())
 		b.app.Instance[contract.ConsoleKernel](consoleKernel)
 	}
 
