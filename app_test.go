@@ -144,7 +144,7 @@ func TestApplication_DeferredMiddleware(t *testing.T) {
 			// Call next. Because of our pipeline.Pipeline rewrite, result is guaranteed to be a *flow.Response
 			result := next(req)
 			if res, ok := result.(*flow.Response); ok {
-				res.Header.Set("X-Mock-Framework", "go-think") // modify the header on the way back out
+				res.Header("X-Mock-Framework", "go-think") // modify the header on the way back out
 				return res
 			}
 			return result

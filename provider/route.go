@@ -23,7 +23,7 @@ func (p *RoutingServiceProvider) Register(app *container.Container) {
 
 	r := flow.New(opts...)
 
-	generator := flow.NewUrlGenerator(r).SetKeyResolver(func() []string {
+	generator := flow.NewUrlGenerator(r, "").SetKeyResolver(func() []string {
 		cfg := app.Make[contract.Config]()
 		if cfg == nil {
 			return nil
