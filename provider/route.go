@@ -17,11 +17,10 @@ type RouteServiceProvider = RoutingServiceProvider
 
 // Register registers the router into the container.
 func (p *RoutingServiceProvider) Register(app *container.Container) {
-	opts := []flow.Option{
-		flow.WithParameterResolver(p.parameterResolver(app)),
+	r := flow.New(nil, nil)
+	if setter, ok := r.(interface{ SetParameterResolver(flow.ParameterResolver) }); ok {
+		setter.SetParameterResolver(p.parameterResolver(app))
 	}
-
-	r := flow.New(opts...)
 
 	generator := flow.NewUrlGenerator(r, "").SetKeyResolver(func() []string {
 		cfg := app.Make[contract.Config]()

@@ -31,7 +31,7 @@ func (d *dummyTerminableMiddleware) Terminate(req *flow.Request, res interface{}
 
 func TestKernel_MiddlewareAndGroups(t *testing.T) {
 	c := container.New()
-	r := flow.New()
+	r := flow.New(nil, nil)
 	c.Instance[flow.Router](r)
 
 	kernel := NewKernel(c)
@@ -56,7 +56,7 @@ func TestKernel_MiddlewareAndGroups(t *testing.T) {
 
 func TestKernel_BootstrapIdempotent(t *testing.T) {
 	c := container.New()
-	r := flow.New()
+	r := flow.New(nil, nil)
 	c.Instance[flow.Router](r)
 
 	k := NewKernel(c)
@@ -69,7 +69,7 @@ func TestKernel_BootstrapIdempotent(t *testing.T) {
 
 func TestKernel_ServeHTTP_And_Concurrency(t *testing.T) {
 	c := container.New()
-	r := flow.New()
+	r := flow.New(nil, nil)
 	r.Get("/hello", func(req *flow.Request) *flow.Response {
 		return flow.NewResponse().SetContent("hello world")
 	})
