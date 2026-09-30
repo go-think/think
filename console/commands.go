@@ -1,9 +1,12 @@
 package console
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/go-think/flow"
 )
 
 // Command is a console command: name, description and run function. Args are
@@ -20,7 +23,7 @@ func (k *Kernel) commands() []Command {
 		{
 			Name:        "route:list",
 			Description: "List all registered routes",
-			Run:         func(args []string) int { return runRouteList(k.dumpRoutes, args) },
+			Run:         func(args []string) int { return k.runRouteList(args) },
 		},
 		{
 			Name:        "make:controller",
@@ -49,6 +52,76 @@ var routeDump func() (string, bool)
 // SetRouteDump injects the route-table accessor.
 func SetRouteDump(fn func() (string, bool)) {
 	routeDump = fn
+}
+
+// runRouteList on Kernel dispatches via flow.Router if available, falling back to dumpRoutes.
+func (k *Kernel) runRouteList(args []string) int {
+	var router flow.Router
+	if k.app != nil {
+		router = k.app.Make[flow.Router]()
+	}
+	if router != nil {
+		router.Register()
+		summaries := router.RouteList()
+		return renderRouteList(summaries, args)
+	}
+	return runRouteList(k.dumpRoutes, args)
+}
+
+// renderRouteList filters and displays structured route summaries.
+func renderRouteList(summaries []flow.RouteSummary, args []string) int {
+	methodFilter, pathFilter, nameFilter, asJSON := "", "", "", false
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "--method="):
+			methodFilter = strings.ToUpper(strings.TrimPrefix(arg, "--method="))
+		case strings.HasPrefix(arg, "--path="):
+			pathFilter = strings.TrimPrefix(arg, "--path=")
+		case strings.HasPrefix(arg, "--name="):
+			nameFilter = strings.TrimPrefix(arg, "--name=")
+		case arg == "--json":
+			asJSON = true
+		}
+	}
+
+	var filtered []flow.RouteSummary
+	for _, s := range summaries {
+		if methodFilter != "" {
+			matched := false
+			for _, m := range s.Methods {
+				if strings.EqualFold(m, methodFilter) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		if pathFilter != "" && !strings.Contains(s.URI, pathFilter) {
+			continue
+		}
+		if nameFilter != "" && !strings.Contains(s.Name, nameFilter) {
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+
+	if asJSON {
+		if filtered == nil {
+			filtered = []flow.RouteSummary{}
+		}
+		data, err := json.MarshalIndent(filtered, "", "  ")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println(string(data))
+		return 0
+	}
+
+	fmt.Println(flow.FormatRouteSummaries(filtered))
+	return 0
 }
 
 // runRouteList prints the route table with an optional filter:
@@ -147,6 +220,7 @@ func runMakeController(args []string) int {
 
 	var b strings.Builder
 	b.WriteString("package controllers\n\n")
+	b.WriteString("import \"github.com/go-think/flow\"\n\n")
 	b.WriteString("// " + name + " handles the " + name + " resource routes.\n")
 	b.WriteString("type " + name + " struct{}\n\n")
 	for _, a := range actions {
@@ -177,7 +251,7 @@ func runMakeMiddleware(args []string) int {
 	b.WriteString("type " + name + " struct{}\n\n")
 	b.WriteString("// New" + name + " creates the middleware.\n")
 	b.WriteString("func New" + name + "() flow.Handler {\n")
-	b.WriteString("\treturn &struct{}{}\n}\n\n")
+	b.WriteString("\treturn &" + name + "{}\n}\n\n")
 	b.WriteString("// Process handles the request.\n")
 	b.WriteString("func (m *" + name + ") Process(req *flow.Request, next flow.Closure) any {\n")
 	b.WriteString("\treturn next(req)\n}\n")

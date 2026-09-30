@@ -134,6 +134,43 @@ func (c *Container) Instance[T any](instance T, name ...string) {
 	}
 }
 
+// InstanceNamed registers an untyped or dynamic instance by name.
+func (c *Container) InstanceNamed(name string, instance any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.namedInstances[name] = instance
+}
+
+// Bound determines if the given abstract type or name has been bound.
+func (c *Container) Bound(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if _, ok := c.aliases[key]; ok {
+		return true
+	}
+	if _, ok := c.namedInstances[key]; ok {
+		return true
+	}
+	if _, ok := c.scopedNamedInstances[key]; ok {
+		return true
+	}
+	if _, ok := c.namedBindings[key]; ok {
+		return true
+	}
+	for t := range c.typeBindings {
+		if c.matchTypeName(t, key) {
+			return true
+		}
+	}
+	for t := range c.typeInstances {
+		if c.matchTypeName(t, key) {
+			return true
+		}
+	}
+	return false
+}
+
 // Resolve resolves a strongly-typed service of type T, returning an error if not found or type mismatch occurs.
 func (c *Container) Resolve[T any](name ...string) (T, error) {
 	var zero T

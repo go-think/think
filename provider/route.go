@@ -15,9 +15,51 @@ type RoutingServiceProvider struct {
 // RouteServiceProvider is an alias to RoutingServiceProvider for backward compatibility.
 type RouteServiceProvider = RoutingServiceProvider
 
+// flowContainerAdapter adapts think's container.Container to flow.Container.
+type flowContainerAdapter struct {
+	c *container.Container
+}
+
+type flowExceptionHandlerAdapter struct {
+	handler contract.ExceptionHandler
+}
+
+func (a *flowExceptionHandlerAdapter) Report(err any) {
+	a.handler.Report(err)
+}
+
+func (a *flowExceptionHandlerAdapter) Render(req *flow.Request, err any) any {
+	return a.handler.Render(err)
+}
+
+func (a *flowContainerAdapter) Make(key string) any {
+	if key == "ExceptionHandler" {
+		if h := a.c.MakeByName("ExceptionHandler"); h != nil {
+			if eh, ok := h.(flow.ExceptionHandler); ok {
+				return eh
+			}
+			if eh, ok := h.(contract.ExceptionHandler); ok {
+				return &flowExceptionHandlerAdapter{handler: eh}
+			}
+		}
+	}
+	return a.c.MakeByName(key)
+}
+
+func (a *flowContainerAdapter) Bound(key string) bool {
+	if key == "ExceptionHandler" {
+		return a.c.Bound("ExceptionHandler")
+	}
+	return a.c.Bound(key)
+}
+
+func (a *flowContainerAdapter) Instance(key string, instance any) {
+	a.c.InstanceNamed(key, instance)
+}
+
 // Register registers the router into the container.
 func (p *RoutingServiceProvider) Register(app *container.Container) {
-	r := flow.New(nil, nil)
+	r := flow.New(nil, &flowContainerAdapter{c: app})
 	if setter, ok := r.(interface{ SetParameterResolver(flow.ParameterResolver) }); ok {
 		setter.SetParameterResolver(p.parameterResolver(app))
 	}
@@ -77,6 +119,10 @@ func (p *RoutingServiceProvider) Boot(app *container.Container) {
 		if logger := app.Make[contract.Logger](); logger != nil {
 			logger.Error("app.key is not configured: signed URLs are disabled and signature validation always fails. Set APP_KEY / app.key before using signed URLs.")
 		}
+	}
+
+	if eh := app.Make[contract.ExceptionHandler](); eh != nil {
+		r.SetExceptionHandler(&flowExceptionHandlerAdapter{handler: eh})
 	}
 
 	r.Register()
