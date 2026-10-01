@@ -2,10 +2,14 @@ package provider
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/go-think/flow"
 	"github.com/go-think/think/container"
 	"github.com/go-think/think/contract"
+	"github.com/go-think/think/exception"
+	"github.com/go-think/think/validator"
 )
 
 // RoutingServiceProvider registers the core router services into the container.
@@ -29,6 +33,17 @@ func (a *flowExceptionHandlerAdapter) Report(err any) {
 }
 
 func (a *flowExceptionHandlerAdapter) Render(req *flow.Request, err any) any {
+	if ve, ok := err.(*contract.ValidationException); ok {
+		if req != nil && !req.ExpectsJson() && req.Session() != nil {
+			targetUrl := req.Header("Referer")
+			if targetUrl == "" {
+				targetUrl = req.Path()
+			}
+			return flow.Redirect(targetUrl).
+				WithInput().
+				WithErrors(ve.Errors)
+		}
+	}
 	return a.handler.Render(err)
 }
 
@@ -98,11 +113,157 @@ func (p *RoutingServiceProvider) Register(app *container.Container) {
 // parameterResolver creates a parameter resolver backed by the application container.
 func (p *RoutingServiceProvider) parameterResolver(app *container.Container) flow.ParameterResolver {
 	return flow.ParameterResolverFunc(func(t reflect.Type, req *flow.Request) (reflect.Value, bool) {
+		// 1. If bound in container, resolve it directly
 		if dep := app.Get(t); dep != nil {
 			return reflect.ValueOf(dep), true
 		}
+
+		// 2. Struct pointer resolution (FormRequest / DTO auto-binding and validation)
+		if t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Struct {
+			val := reflect.New(t.Elem())
+			instance := val.Interface()
+
+			if req != nil {
+				// If JSON request, bind JSON payload
+				if req.IsJson() {
+					_ = req.BindJson(instance)
+				}
+				// Also bind form/query parameters into struct fields
+				bindRequestDataToStruct(req, val.Elem())
+
+				// Check AuthorizesRequests
+				if authReq, ok := instance.(contract.AuthorizesRequests); ok {
+					if !authReq.Authorize() {
+						panic(&exception.HttpException{
+							Code:    403,
+							Message: "This action is unauthorized.",
+						})
+					}
+				}
+
+				// Check ValidatesWhenResolved
+				if vwr, ok := instance.(contract.ValidatesWhenResolved); ok {
+					if err := vwr.ValidateResolved(); err != nil {
+						panic(err)
+					}
+					return val, true
+				}
+
+				// Check FormRequest
+				if formReq, ok := instance.(contract.FormRequest); ok {
+					rules := formReq.Rules()
+					var customMsgs map[string]string
+					if cm, ok := instance.(contract.CustomMessages); ok {
+						customMsgs = cm.Messages()
+					}
+					if _, err := validator.Validate(instance, rules, customMsgs); err != nil {
+						panic(err)
+					}
+					return val, true
+				}
+			}
+
+			return val, true
+		}
+
 		return reflect.Value{}, false
 	})
+}
+
+func bindRequestDataToStruct(req *flow.Request, structVal reflect.Value) {
+	allData := make(map[string]string)
+	for k, v := range req.All() {
+		allData[k] = v
+	}
+	for k, v := range req.RouteParams() {
+		allData[k] = v
+	}
+	if len(allData) == 0 {
+		return
+	}
+	bindDataMapToStruct(allData, structVal)
+}
+
+func bindDataMapToStruct(allData map[string]string, structVal reflect.Value) {
+	t := structVal.Type()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fv := structVal.Field(i)
+
+		// Support embedded anonymous structs
+		if field.Anonymous && fv.Kind() == reflect.Struct {
+			bindDataMapToStruct(allData, fv)
+			continue
+		}
+
+		if !field.IsExported() {
+			continue
+		}
+
+		key := field.Name
+		if jsonTag := field.Tag.Get("json"); jsonTag != "" && jsonTag != "-" {
+			key = strings.Split(jsonTag, ",")[0]
+		} else if formTag := field.Tag.Get("form"); formTag != "" && formTag != "-" {
+			key = strings.Split(formTag, ",")[0]
+		} else if routeTag := field.Tag.Get("route"); routeTag != "" && routeTag != "-" {
+			key = strings.Split(routeTag, ",")[0]
+		}
+
+		rawVal, exists := allData[key]
+		if !exists {
+			rawVal, exists = allData[strings.ToLower(key)]
+		}
+		if !exists {
+			rawVal, exists = allData[toSnake(key)]
+		}
+		if !exists {
+			continue
+		}
+
+		// Only set if field is zero-value (so JSON binding takes precedence if already set)
+		if !fv.IsZero() {
+			continue
+		}
+
+		switch fv.Kind() {
+		case reflect.String:
+			fv.SetString(rawVal)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if iv, err := strconv.ParseInt(rawVal, 10, 64); err == nil {
+				fv.SetInt(iv)
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if uv, err := strconv.ParseUint(rawVal, 10, 64); err == nil {
+				fv.SetUint(uv)
+			}
+		case reflect.Float32, reflect.Float64:
+			if flv, err := strconv.ParseFloat(rawVal, 64); err == nil {
+				fv.SetFloat(flv)
+			}
+		case reflect.Bool:
+			lower := strings.ToLower(rawVal)
+			if lower == "true" || lower == "1" || lower == "on" {
+				fv.SetBool(true)
+			} else if lower == "false" || lower == "0" || lower == "off" {
+				fv.SetBool(false)
+			}
+		}
+	}
+}
+
+func toSnake(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('_')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // Boot compiles route rules and validates signing configuration.

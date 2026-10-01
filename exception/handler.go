@@ -1,6 +1,7 @@
 package exception
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -17,10 +18,12 @@ type Handler struct {
 }
 
 func NewHandler(logger contract.Logger) contract.ExceptionHandler {
-	return &Handler{
+	h := &Handler{
 		logger:     logger,
 		dontReport: make([]reflect.Type, 0),
 	}
+	h.DontReport(&contract.ValidationException{})
+	return h
 }
 
 // SetDebugResolver injects the debug flag lookup (typically app.IsDebug).
@@ -88,6 +91,16 @@ func (h *Handler) Render(err interface{}) interface{} {
 	}
 
 	resp := flow.NewResponse()
+	if ve, ok := err.(*contract.ValidationException); ok {
+		resp.SetCode(ve.Status)
+		resp.SetContentType("application/json")
+		b, _ := json.Marshal(map[string]any{
+			"message": ve.Message,
+			"errors":  ve.Errors,
+		})
+		resp.SetContent(string(b))
+		return resp
+	}
 	if e, ok := err.(*HttpException); ok {
 		// HTTP exceptions carry user-facing messages by design.
 		resp.SetCode(e.Code)

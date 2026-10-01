@@ -52,6 +52,11 @@ func TestKernel_MiddlewareAndGroups(t *testing.T) {
 	k.AddGlobalMiddleware("global1", "global2")
 	globals := k.GetGlobalMiddleware()
 	assert.Equal(t, []interface{}{"global1", "global2"}, globals)
+
+	// Middleware Priority
+	k.SetMiddlewarePriority("auth", "session")
+	priorities := k.GetMiddlewarePriority()
+	assert.Equal(t, []interface{}{"auth", "session"}, priorities)
 }
 
 func TestKernel_BootstrapIdempotent(t *testing.T) {

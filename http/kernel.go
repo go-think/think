@@ -12,18 +12,20 @@ import (
 type Kernel struct {
 	sync.RWMutex
 	app              *container.Container
-	globalMiddleware []interface{}
-	routeMiddleware  map[string]interface{}
-	middlewareGroups map[string][]interface{}
-	bootstrapOnce    sync.Once
+	globalMiddleware   []interface{}
+	routeMiddleware    map[string]interface{}
+	middlewareGroups   map[string][]interface{}
+	middlewarePriority []interface{}
+	bootstrapOnce      sync.Once
 }
 
 func NewKernel(app *container.Container) contract.HttpKernel {
 	return &Kernel{
-		app:              app,
-		globalMiddleware: make([]interface{}, 0),
-		routeMiddleware:  make(map[string]interface{}),
-		middlewareGroups: make(map[string][]interface{}),
+		app:                app,
+		globalMiddleware:   make([]interface{}, 0),
+		routeMiddleware:    make(map[string]interface{}),
+		middlewareGroups:   make(map[string][]interface{}),
+		middlewarePriority: make([]interface{}, 0),
 	}
 }
 
@@ -51,6 +53,9 @@ func (k *Kernel) Bootstrap() {
 			for name, g := range k.middlewareGroups {
 				r.MiddlewareGroup(name, g...)
 			}
+			if len(k.middlewarePriority) > 0 {
+				r.MiddlewarePriority(k.middlewarePriority...)
+			}
 			k.RUnlock()
 		}
 	})
@@ -66,6 +71,9 @@ func (k *Kernel) Handle(request interface{}) interface{} {
 	}
 
 	pipe := flow.NewPipeline()
+	if eh := k.app.Make[contract.ExceptionHandler](); eh != nil {
+		pipe.WithExceptionHandler(&pipelineExceptionHandler{handler: eh})
+	}
 
 	// Append Global Middlewares (we need to cast them to flow.Handler)
 	k.RLock()
@@ -205,4 +213,44 @@ func (k *Kernel) GetGlobalMiddleware() []interface{} {
 	copied := make([]interface{}, len(k.globalMiddleware))
 	copy(copied, k.globalMiddleware)
 	return copied
+}
+
+func (k *Kernel) SetMiddlewarePriority(middlewares ...interface{}) {
+	k.Lock()
+	defer k.Unlock()
+	k.middlewarePriority = append([]interface{}(nil), middlewares...)
+	if r := k.app.Make[flow.Router](); r != nil {
+		r.MiddlewarePriority(k.middlewarePriority...)
+	}
+}
+
+func (k *Kernel) GetMiddlewarePriority() []interface{} {
+	k.RLock()
+	defer k.RUnlock()
+	copied := make([]interface{}, len(k.middlewarePriority))
+	copy(copied, k.middlewarePriority)
+	return copied
+}
+
+type pipelineExceptionHandler struct {
+	handler contract.ExceptionHandler
+}
+
+func (h *pipelineExceptionHandler) Report(err any) {
+	h.handler.Report(err)
+}
+
+func (h *pipelineExceptionHandler) Render(req *flow.Request, err any) any {
+	if ve, ok := err.(*contract.ValidationException); ok {
+		if req != nil && !req.ExpectsJson() && req.Session() != nil {
+			targetUrl := req.Header("Referer")
+			if targetUrl == "" {
+				targetUrl = req.Path()
+			}
+			return flow.Redirect(targetUrl).
+				WithInput().
+				WithErrors(ve.Errors)
+		}
+	}
+	return h.handler.Render(err)
 }

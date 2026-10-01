@@ -73,6 +73,54 @@ func (m *MiddlewareConfig) ValidateSignatures() *MiddlewareConfig {
 	return m
 }
 
+// TrustProxies registers the trusted proxies middleware globally.
+func (m *MiddlewareConfig) TrustProxies(proxies ...string) *MiddlewareConfig {
+	return m.Use(flow.NewTrustProxiesMiddleware(proxies...))
+}
+
+// ConvertEmptyStringsToNull registers the empty string cleanup middleware globally.
+func (m *MiddlewareConfig) ConvertEmptyStringsToNull(except ...string) *MiddlewareConfig {
+	return m.Use(flow.NewConvertEmptyStringsToNullMiddleware(except...))
+}
+
+// VerifyCsrfToken registers the CSRF verification middleware globally.
+func (m *MiddlewareConfig) VerifyCsrfToken(except ...string) *MiddlewareConfig {
+	return m.Use(flow.NewVerifyCsrfTokenMiddleware(except...))
+}
+
+// Priority sets the middleware execution priority order.
+func (m *MiddlewareConfig) Priority(priorities ...interface{}) *MiddlewareConfig {
+	if m.kernel != nil {
+		m.kernel.SetMiddlewarePriority(priorities...)
+	}
+	return m
+}
+
+// RequestID registers the request ID injection and propagation middleware globally.
+func (m *MiddlewareConfig) RequestID(headerName ...string) *MiddlewareConfig {
+	return m.Use(flow.NewRequestIDMiddleware(headerName...))
+}
+
+// RequestBodyLimit registers the payload size limitation middleware globally.
+func (m *MiddlewareConfig) RequestBodyLimit(maxBytes int64) *MiddlewareConfig {
+	return m.Use(flow.NewRequestBodyLimitMiddleware(maxBytes))
+}
+
+// SecureHeaders registers the standard security headers middleware globally.
+func (m *MiddlewareConfig) SecureHeaders(cfg ...*flow.SecureHeadersConfig) *MiddlewareConfig {
+	return m.Use(flow.NewSecureHeadersMiddleware(cfg...))
+}
+
+// Gzip registers the response compression middleware globally.
+func (m *MiddlewareConfig) Gzip(minLength ...int) *MiddlewareConfig {
+	return m.Use(flow.NewGzipMiddleware(minLength...))
+}
+
+// PreventRequestsDuringMaintenance registers the maintenance mode middleware globally.
+func (m *MiddlewareConfig) PreventRequestsDuringMaintenance(cfg *flow.MaintenanceModeConfig) *MiddlewareConfig {
+	return m.Use(flow.NewMaintenanceModeMiddleware(cfg))
+}
+
 // ExceptionsConfig provides custom exception reporting and rendering callbacks.
 type ExceptionsConfig struct {
 	handler contract.ExceptionHandler
@@ -119,6 +167,7 @@ func Configure(basePath ...string) *ApplicationBuilder {
 	}
 
 	return builder.
+		WithExceptions().
 		WithKernels().
 		WithEvents().
 		WithCommands().

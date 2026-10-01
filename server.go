@@ -131,7 +131,7 @@ func (a *Application) Run(params ...string) {
 	}()
 
 	if logger != nil {
-		logger.Debug("Think application server running on http://%s", srv.Addr)
+		logger.Info("Server running on [http://%s].", srv.Addr)
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		if logger != nil {

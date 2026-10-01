@@ -5,6 +5,7 @@ import (
 	"github.com/go-think/flow"
 	"github.com/go-think/think/container"
 	"github.com/go-think/think/contract"
+	"github.com/go-think/think/validator"
 )
 
 // App is the global application instance holder for facades.
@@ -49,4 +50,9 @@ func Log() contract.Logger {
 // Cache returns the global Cache repository instance.
 func Cache() *cache.Repository {
 	return Container().Make[*cache.Repository]()
+}
+
+// Validator creates a new Validator instance for data validation.
+func Validator(data any, rules map[string]string, messages ...map[string]string) *validator.Validator {
+	return validator.Make(data, rules, messages...)
 }

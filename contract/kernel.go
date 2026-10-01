@@ -18,6 +18,8 @@ type HttpKernel interface {
 	GetRouteMiddleware(name string) interface{}
 	// ServeHTTP implements the standard http.Handler interface.
 	ServeHTTP(w interface{}, r interface{})
+	// SetMiddlewarePriority sets the middleware priority order.
+	SetMiddlewarePriority(middlewares ...interface{})
 }
 
 // ConsoleKernel handles CLI console commands.
